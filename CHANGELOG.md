@@ -4,6 +4,9 @@
 
 - Published the source as a public GitHub repository.
 - Updated self-host setup docs and defaults to include the public clone URL.
+- Expanded Matomo coverage from pageviews and marketing CTAs to auth, setup,
+  dashboard workflows, photo storage, AI analysis, Facebook fill status,
+  embedded browser connection events, and self-host guide command copies.
 
 ## 2026.05.16
 

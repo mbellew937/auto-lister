@@ -175,6 +175,15 @@ def build_matomo_tracking_html() -> str:
     return """
     <script>
         var _paq = window._paq = window._paq || [];
+        window.trackAutoListerEvent = window.trackAutoListerEvent || function(category, action, name, value) {
+            try {
+                if (!category || !action || !window._paq || typeof window._paq.push !== "function") return;
+                var event = ["trackEvent", String(category), String(action)];
+                if (name !== undefined && name !== null && name !== "") event.push(String(name));
+                if (Number.isFinite(Number(value))) event.push(Number(value));
+                window._paq.push(event);
+            } catch (e) {}
+        };
         _paq.push(["trackPageView"]);
         _paq.push(["enableLinkTracking"]);
         (function() {
@@ -196,7 +205,21 @@ MATOMO_TRACKING_HTML = build_matomo_tracking_html()
 def with_matomo_tracking(html: str) -> str:
     if not MATOMO_TRACKING_HTML:
         return html
-    return html.replace("</head>", f"{MATOMO_TRACKING_HTML}\n</head>", 1)
+    if "</head>" in html:
+        return html.replace("</head>", f"{MATOMO_TRACKING_HTML}\n</head>", 1)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {MATOMO_TRACKING_HTML}
+</head>
+<body>{html}</body>
+</html>"""
+
+
+def tracked_html_response(html: str, status_code: int = 200) -> HTMLResponse:
+    return HTMLResponse(with_matomo_tracking(html), status_code=status_code)
 
 # Initialize
 app = FastAPI()
@@ -915,6 +938,10 @@ LOGIN_HTML = """
         const AUTH_PROVIDER = """ + AUTH_PROVIDER_JS + """;
         const OIDC_PROVIDER_LABEL = """ + OIDC_PROVIDER_LABEL_JS + """;
 
+        function trackAuthAction(action, name) {
+            if (window.trackAutoListerEvent) window.trackAutoListerEvent('auth', action, name || AUTH_PROVIDER);
+        }
+
         async function localFetch(path, body) {
             const res = await fetch(path, {
                 method: 'POST',
@@ -944,10 +971,13 @@ LOGIN_HTML = """
             const btn = document.getElementById('login-btn');
             btn.innerText = 'Signing in\u2026'; btn.disabled = true;
             try {
+                trackAuthAction('login-start', 'local');
                 const result = await localFetch('/api/auth/login', {email, password: pass});
                 if (!result.success) throw new Error(result.error || 'Sign in failed.');
+                trackAuthAction('login-success', 'local');
                 window.location.href = '/dashboard';
             } catch (err) {
+                trackAuthAction('login-error', 'local');
                 showError(err.message);
                 btn.innerText = 'Sign In'; btn.disabled = false;
             }
@@ -962,6 +992,7 @@ LOGIN_HTML = """
             const btn = document.getElementById('signup-btn');
             btn.innerText = 'Creating account\u2026'; btn.disabled = true;
             try {
+                trackAuthAction('signup-blocked', 'local');
                 throw new Error('Self-hosted local auth only allows setup of the first admin.');
             } catch (err) {
                 showError(err.message);
@@ -970,6 +1001,7 @@ LOGIN_HTML = """
         }
 
         function handleOidc() {
+            trackAuthAction('oidc-start', OIDC_PROVIDER_LABEL || 'oidc');
             window.location.href = '/api/auth/login';
         }
 
@@ -1120,6 +1152,7 @@ SELF_HOST_GUIDE_HTML = """
             navigator.clipboard.writeText(pre.innerText).then(() => {
                 const originalText = btn.innerText;
                 btn.innerText = 'Copied!';
+                if (window.trackAutoListerEvent) window.trackAutoListerEvent('self-host', 'copy-command', preId);
                 setTimeout(() => btn.innerText = originalText, 2000);
             });
         }
@@ -1367,6 +1400,10 @@ EMBEDDED_VNC_HTML = """
         let rfb = null;
         let keyboardInputHandled = false;
 
+        function trackBrowserAction(action) {
+            if (window.trackAutoListerEvent) window.trackAutoListerEvent('browser', action, 'embedded-vnc');
+        }
+
         const KEY_BACKSPACE = 0xff08;
         const KEY_TAB = 0xff09;
         const KEY_RETURN = 0xff0d;
@@ -1463,10 +1500,12 @@ EMBEDDED_VNC_HTML = """
             rfb.focusOnClick = true;
 
             rfb.addEventListener('connect', () => {
+                trackBrowserAction('connect');
                 setStatus('', false);
             });
 
             rfb.addEventListener('disconnect', (event) => {
+                trackBrowserAction(event.detail.clean ? 'disconnect' : 'disconnect-unexpected');
                 setStatus(event.detail.clean ? 'Disconnected' : 'Reconnecting…');
                 scheduleReconnect();
             });
@@ -1640,6 +1679,10 @@ SETUP_HTML = """
         </div>
     </div>
     <script>
+        function trackSetupAction(action) {
+            if (window.trackAutoListerEvent) window.trackAutoListerEvent('auth', action, 'setup');
+        }
+
         async function setupAdmin() {
             const btn = document.getElementById('setup-btn');
             const payload = {
@@ -1650,6 +1693,7 @@ SETUP_HTML = """
             btn.disabled = true;
             btn.innerText = 'Creating admin…';
             try {
+                trackSetupAction('setup-start');
                 const res = await fetch('/api/auth/setup', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -1657,8 +1701,10 @@ SETUP_HTML = """
                 });
                 const result = await res.json();
                 if (!result.success) throw new Error(result.error || 'Setup failed.');
+                trackSetupAction('setup-success');
                 window.location.href = '/dashboard';
             } catch (err) {
+                trackSetupAction('setup-error');
                 const el = document.getElementById('error-msg');
                 el.innerText = err.message;
                 el.style.display = 'block';
@@ -2709,6 +2755,10 @@ let storageCreateInFlight = false;
 const isMobile = window.innerWidth < 1024;
 const device = isMobile ? 'mobile' : 'desktop';
 
+function trackAppAction(action, name='', value) {
+    if (window.trackAutoListerEvent) window.trackAutoListerEvent('app', action, name || device, value);
+}
+
 // ── draft IDs stored separately so onclick can look them up without HTML escaping issues ──
 const draftMap = {};
 const photoSetMap = {};
@@ -2733,6 +2783,7 @@ async function loadCredits(userId) {
 
 async function buyCredits() {
     try {
+        trackAppAction('checkout-start');
         const res = await fetch('/api/checkout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2740,11 +2791,14 @@ async function buyCredits() {
         });
         const data = await res.json();
         if (data.success && data.url) {
+            trackAppAction('checkout-redirect');
             window.location.href = data.url;
         } else {
+            trackAppAction('checkout-error');
             alert("Checkout Error: " + data.error);
         }
     } catch (e) {
+        trackAppAction('checkout-error');
         alert("Checkout Error.");
     }
 }
@@ -2773,11 +2827,13 @@ async function init() {
 }
 
 async function signOut() {
+    trackAppAction('logout');
     window.location.href = '/api/auth/logout';
 }
 
 function openMobileFacebookBrowser() {
     if (!userId) return;
+    trackAppAction('open-browser', 'mobile');
     window.open(`/embedded-vnc?path=${encodeURIComponent(`vnc/${userId}/${device}`)}`, '_blank', 'noopener');
 }
 
@@ -2908,6 +2964,7 @@ function toggleStorageDrawer() {
 
 async function resumeDraft(draftId) {
     try {
+        trackAppAction('draft-resume-start');
         if (isMobile) {
             showStep('mStep2');
             setMStatus('Loading draft…');
@@ -2921,8 +2978,9 @@ async function resumeDraft(draftId) {
             body: JSON.stringify({ userId, draftId }),
         });
         const result = await res.json();
-        if (!result.success) { alert('Could not resume: ' + result.error); return; }
+        if (!result.success) { trackAppAction('draft-resume-error'); alert('Could not resume: ' + result.error); return; }
         currentDraftId = result.draft_id; hasAnalysis = true;
+        trackAppAction('draft-resume-success');
         if (isMobile) {
             document.getElementById('mDraftsDrawer').style.display = 'none';
             showStep('mStep2');
@@ -2932,18 +2990,20 @@ async function resumeDraft(draftId) {
             renderDesktopResults(result.details);
             setDStatus('Draft resumed — review and post.', 'ok');
         }
-    } catch(e) { alert('Error resuming draft.'); }
+    } catch(e) { trackAppAction('draft-resume-error'); alert('Error resuming draft.'); }
 }
 
 async function deleteDraft(draftId) {
     if (!confirm('Delete this saved draft?')) return;
     try {
+        trackAppAction('draft-delete-start');
         const res = await fetch('/api/delete-draft', {
             method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({ userId, draftId }),
         });
         const result = await res.json();
-        if (!result.success) { alert('Could not delete draft: ' + result.error); return; }
+        if (!result.success) { trackAppAction('draft-delete-error'); alert('Could not delete draft: ' + result.error); return; }
+        trackAppAction('draft-delete-success');
         if (currentDraftId === draftId) {
             currentDraftId = null;
             hasAnalysis = false;
@@ -2955,7 +3015,7 @@ async function deleteDraft(draftId) {
         await loadDraftsList();
         if (isMobile) setMStatus('Draft deleted.', 'ok');
         else setDStatus('Draft deleted.', 'ok');
-    } catch(e) { alert('Error deleting draft.'); }
+    } catch(e) { trackAppAction('draft-delete-error'); alert('Error deleting draft.'); }
 }
 
 // ── HELPERS ──
@@ -3076,6 +3136,9 @@ async function pollFillStatus() {
             fillPollTimer = setTimeout(pollFillStatus, 900);
             return;
         }
+        if (data.state === 'complete' || data.state === 'error') {
+            trackAppAction('facebook-fill-' + data.state, device, Number(data.progress) || 0);
+        }
         const postBtn = document.getElementById(isMobile ? 'mPostBtn' : 'dPostBtn');
         if (postBtn) {
             postBtn.disabled = false;
@@ -3111,6 +3174,7 @@ function setMStatus(msg, type='busy') {
 
 function handleFiles(files) {
     if (!files?.length) return;
+    trackAppAction('photos-selected', device, files.length);
     for (const f of files) selectedFiles.push(f);
     updateMobilePhotoSelection();
     document.getElementById('photoInput').value = '';
@@ -3119,6 +3183,7 @@ function handleFiles(files) {
 
 function handleStorageFiles(files, input) {
     if (!files?.length) return;
+    trackAppAction('storage-upload-selected', device, files.length);
     uploadPhotosToStorage(files).finally(() => {
         if (input) input.value = '';
     });
@@ -3126,6 +3191,7 @@ function handleStorageFiles(files, input) {
 
 function handleDraftUploadFiles(files, input) {
     if (!files?.length) return;
+    trackAppAction('draft-upload-selected', device, files.length);
     uploadPhotosToDrafts(files).finally(() => {
         if (input) input.value = '';
     });
@@ -3152,6 +3218,7 @@ function updateMobilePhotoSelection() {
 async function mobileAnalyze(autoTriggered=false) {
     if (!selectedFiles.length || mobileAnalyzeInFlight) return;
     mobileAnalyzeInFlight = true;
+    trackAppAction(autoTriggered ? 'analyze-auto-start' : 'analyze-start', 'mobile', selectedFiles.length);
     showStep('mStep2');
     setMStatus(autoTriggered ? 'Uploading photos and auto-analyzing…' : 'Analyzing photos and looking up comps…');
     document.getElementById('mResults').style.display = 'none';
@@ -3165,9 +3232,9 @@ async function mobileAnalyze(autoTriggered=false) {
     try {
         const res = await fetch(`/api/upload?userId=${userId}&device=${device}`, {method:'POST',body:fd});
         const r = await res.json();
-        if (r.success) { currentDraftId = r.draft_id; setMStatus(''); renderMobileResults(r.details); loadDraftsList(); }
-        else setMStatus(r.error, 'err');
-    } catch(e) { setMStatus('Network error. Try again.', 'err'); }
+        if (r.success) { trackAppAction('analyze-success', 'mobile'); currentDraftId = r.draft_id; setMStatus(''); renderMobileResults(r.details); loadDraftsList(); }
+        else { trackAppAction('analyze-error', 'mobile'); setMStatus(r.error, 'err'); }
+    } catch(e) { trackAppAction('analyze-error', 'mobile'); setMStatus('Network error. Try again.', 'err'); }
     finally {
         mobileAnalyzeInFlight = false;
         document.getElementById('mAnalyzeBtn').disabled = false;
@@ -3177,36 +3244,44 @@ async function mobileAnalyze(autoTriggered=false) {
 
 async function uploadPhotosToStorage(files) {
     setStorageStatus('Uploading to storage…');
+    trackAppAction('storage-upload-start', device, files.length);
     const fd = new FormData();
     for (const f of files) fd.append('files', f);
     try {
         const res = await fetch(`/api/photo-storage/upload?userId=${userId}&device=${device}`, { method: 'POST', body: fd });
         const result = await res.json();
         if (!result.success) {
+            trackAppAction('storage-upload-error');
             setStorageStatus(result.error || 'Upload failed.', 'err');
             return;
         }
+        trackAppAction('storage-upload-success', device, files.length);
         setStorageStatus('Stored.', 'ok');
         await loadPhotoStorageList();
     } catch(e) {
+        trackAppAction('storage-upload-error');
         setStorageStatus('Network error. Try again.', 'err');
     }
 }
 
 async function uploadPhotosToDrafts(files) {
     setStorageStatus('Uploading to drafts…');
+    trackAppAction('draft-upload-start', device, files.length);
     const fd = new FormData();
     for (const f of files) fd.append('files', f);
     try {
         const res = await fetch(`/api/drafts/upload?userId=${userId}&device=${device}`, { method: 'POST', body: fd });
         const result = await res.json();
         if (!result.success) {
+            trackAppAction('draft-upload-error');
             setStorageStatus(result.error || 'Upload failed.', 'err');
             return;
         }
+        trackAppAction('draft-upload-success', device, files.length);
         setStorageStatus('Draft saved.', 'ok');
         await loadDraftsList();
     } catch(e) {
+        trackAppAction('draft-upload-error');
         setStorageStatus('Network error. Try again.', 'err');
     }
 }
@@ -3269,6 +3344,7 @@ function renderMobileResults(d) {
 
 async function mobilePost() {
     stopFillPolling();
+    trackAppAction('facebook-fill-start', 'mobile');
     const btn = document.getElementById('mPostBtn');
     const st = document.getElementById('mPostStatus');
     btn.disabled = true; btn.textContent = 'Posting…';
@@ -3282,16 +3358,19 @@ async function mobilePost() {
         });
         const r = await res.json();
         if (r.success) {
+            trackAppAction('facebook-fill-queued', 'mobile');
             st.className = 'status-pill busy';
             st.innerHTML = '<span class="spin">⟳</span> Playwright is working through the Facebook form…';
             showFillStatus({ state: 'queued', progress: 1, message: 'Queued Facebook fill', entries: [] });
             pollFillStatus();
             loadDraftsList();
         } else {
+            trackAppAction('facebook-fill-error', 'mobile');
             st.className = 'status-pill err'; st.textContent = r.error;
             btn.disabled = false; btn.textContent = 'Post to Facebook Marketplace';
         }
     } catch(e) {
+        trackAppAction('facebook-fill-error', 'mobile');
         st.className = 'status-pill err'; st.textContent = 'Network error. Try again.';
         btn.disabled = false; btn.textContent = 'Post to Facebook Marketplace';
     }
@@ -3300,6 +3379,7 @@ async function mobilePost() {
 async function mobileRefine() {
     const correction = document.getElementById('mCorrectionBox').value.trim();
     if (!correction) { alert('Add a correction first.'); return; }
+    trackAppAction('refine-start', 'mobile');
     setMStatus('Re-running with your correction…');
     document.getElementById('mResults').style.display = 'none';
     try {
@@ -3308,12 +3388,13 @@ async function mobileRefine() {
             body: JSON.stringify({ userId, correction }),
         });
         const r = await res.json();
-        if (r.success) { setMStatus(''); renderMobileResults(r.details); }
-        else setMStatus(r.error, 'err');
-    } catch(e) { setMStatus('Network error.', 'err'); }
+        if (r.success) { trackAppAction('refine-success', 'mobile'); setMStatus(''); renderMobileResults(r.details); }
+        else { trackAppAction('refine-error', 'mobile'); setMStatus(r.error, 'err'); }
+    } catch(e) { trackAppAction('refine-error', 'mobile'); setMStatus('Network error.', 'err'); }
 }
 
 function mobileReset() {
+    trackAppAction('reset', 'mobile');
     selectedFiles = []; hasAnalysis = false; currentDraftId = null;
     mobileAnalyzeInFlight = false;
     stopFillPolling();
@@ -3347,6 +3428,7 @@ function desktopFileChange(files) {
     document.getElementById('dResults').style.display = 'none';
     setDStatus('');
     if (files.length) {
+        trackAppAction('photos-selected', 'desktop', files.length);
         for (const f of files) {
             const img = document.createElement('img');
             img.src = URL.createObjectURL(f);
@@ -3385,6 +3467,7 @@ function renderDesktopResults(d) {
 async function desktopAnalyze() {
     const files = document.getElementById('fileInput').files;
     if (!files.length) return;
+    trackAppAction('analyze-start', 'desktop', files.length);
     setDStatus('Analyzing with AI…');
     document.getElementById('dAnalyzeBtn').disabled = true;
     const fd = new FormData();
@@ -3392,15 +3475,16 @@ async function desktopAnalyze() {
     try {
         const res = await fetch(`/api/upload?userId=${userId}&device=${device}`, {method:'POST',body:fd});
         const r = await res.json();
-        if (r.success) { currentDraftId = r.draft_id; renderDesktopResults(r.details); setDStatus('Review and correct if needed.'); loadDraftsList(); }
-        else setDStatus(r.error, 'err');
-    } catch(e) { setDStatus('Error analyzing.', 'err'); }
+        if (r.success) { trackAppAction('analyze-success', 'desktop'); currentDraftId = r.draft_id; renderDesktopResults(r.details); setDStatus('Review and correct if needed.'); loadDraftsList(); }
+        else { trackAppAction('analyze-error', 'desktop'); setDStatus(r.error, 'err'); }
+    } catch(e) { trackAppAction('analyze-error', 'desktop'); setDStatus('Error analyzing.', 'err'); }
     document.getElementById('dAnalyzeBtn').disabled = false;
 }
 
 async function createListingFromStorage(photoSetId) {
     if (!photoSetId || storageCreateInFlight) return false;
     storageCreateInFlight = true;
+    trackAppAction('storage-create-listing-start');
     if (isMobile) {
         showStep('mStep2');
         setMStatus('Analyzing stored photos…');
@@ -3420,12 +3504,14 @@ async function createListingFromStorage(photoSetId) {
         });
         const result = await res.json();
         if (!result.success) {
+            trackAppAction('storage-create-listing-error');
             if (isMobile) setMStatus(result.error || 'Could not create listing.', 'err');
             else setDStatus(result.error || 'Could not create listing.', 'err');
             return false;
         }
         currentDraftId = result.draft_id;
         hasAnalysis = true;
+        trackAppAction('storage-create-listing-success');
         await loadDraftsList();
         if (isMobile) {
             setMStatus('');
@@ -3436,6 +3522,7 @@ async function createListingFromStorage(photoSetId) {
         }
         return true;
     } catch(e) {
+        trackAppAction('storage-create-listing-error');
         if (isMobile) setMStatus('Network error. Try again.', 'err');
         else setDStatus('Network error. Try again.', 'err');
         return false;
@@ -3447,6 +3534,7 @@ async function createListingFromStorage(photoSetId) {
 async function desktopRefine() {
     const correction = document.getElementById('correctionBox').value.trim();
     if (!correction) { setDStatus('Add a correction first.'); return; }
+    trackAppAction('refine-start', 'desktop');
     setDStatus('Re-running with correction…');
     try {
         const res = await fetch('/api/refine', {
@@ -3454,13 +3542,14 @@ async function desktopRefine() {
             body: JSON.stringify({ userId, correction }),
         });
         const r = await res.json();
-        if (r.success) { renderDesktopResults(r.details); setDStatus('Updated.', 'ok'); }
-        else setDStatus(r.error, 'err');
-    } catch(e) { setDStatus('Error.', 'err'); }
+        if (r.success) { trackAppAction('refine-success', 'desktop'); renderDesktopResults(r.details); setDStatus('Updated.', 'ok'); }
+        else { trackAppAction('refine-error', 'desktop'); setDStatus(r.error, 'err'); }
+    } catch(e) { trackAppAction('refine-error', 'desktop'); setDStatus('Error.', 'err'); }
 }
 
 async function desktopDraft() {
     stopFillPolling();
+    trackAppAction('facebook-fill-start', 'desktop');
     const btn = document.getElementById('dPostBtn');
     if (btn) btn.disabled = true;
     setDStatus('Posting to Facebook…');
@@ -3471,22 +3560,26 @@ async function desktopDraft() {
         });
         const r = await res.json();
         if (r.success) {
+            trackAppAction('facebook-fill-queued', 'desktop');
             setDStatus('Playwright is filling the Facebook form now…');
             showFillStatus({ state: 'queued', progress: 1, message: 'Queued Facebook fill', entries: [] });
             pollFillStatus();
             loadDraftsList();
         }
         else {
+            trackAppAction('facebook-fill-error', 'desktop');
             if (btn) btn.disabled = false;
             setDStatus(r.error, 'err');
         }
     } catch(e) {
+        trackAppAction('facebook-fill-error', 'desktop');
         if (btn) btn.disabled = false;
         setDStatus('Error.', 'err');
     }
 }
 
 async function desktopRevealPublish() {
+    trackAppAction('publish-reveal-start', 'desktop');
     setDStatus('Scrolling the Facebook session to the Publish button…');
     try {
         const res = await fetch('/api/reveal-publish', {
@@ -3494,9 +3587,9 @@ async function desktopRevealPublish() {
             body: JSON.stringify({ userId, device }),
         });
         const r = await res.json();
-        if (r.success) { setDStatus('Publish area revealed in the browser panel.', 'ok'); }
-        else setDStatus(r.error, 'err');
-    } catch(e) { setDStatus('Error.', 'err'); }
+        if (r.success) { trackAppAction('publish-reveal-success', 'desktop'); setDStatus('Publish area revealed in the browser panel.', 'ok'); }
+        else { trackAppAction('publish-reveal-error', 'desktop'); setDStatus(r.error, 'err'); }
+    } catch(e) { trackAppAction('publish-reveal-error', 'desktop'); setDStatus('Error.', 'err'); }
 }
 
 // ── First-time Tutorial ──
@@ -3618,12 +3711,14 @@ function tutStep(dir) {
     if (next >= TUT_STEPS.length) { tutDismiss(); return; }
     if (next < 0) return;
     tutCurrent = next;
+    trackAppAction('tutorial-step', String(tutCurrent + 1));
     tutRender();
 }
 
-function tutGoTo(i) { tutCurrent = i; tutRender(); }
+function tutGoTo(i) { tutCurrent = i; trackAppAction('tutorial-step', String(tutCurrent + 1)); tutRender(); }
 
 function tutDismiss() {
+    trackAppAction('tutorial-dismiss', String(tutCurrent + 1));
     localStorage.setItem(TUT_KEY, '1');
     document.getElementById('tutOverlay').style.display = 'none';
 }
@@ -3633,6 +3728,7 @@ function tutMaybeShow() {
         tutCurrent = 0;
         tutRender();
         document.getElementById('tutOverlay').style.display = 'flex';
+        trackAppAction('tutorial-open');
     }
 }
 
@@ -4070,17 +4166,17 @@ async def run_create_draft_fill(user_id: str, session: dict, pending: dict):
         set_fill_job(user_id, "error", f"Facebook fill failed: {e}", 100, step="error")
 
 @app.get("/")
-async def marketing_page(): return HTMLResponse(with_matomo_tracking(MARKETING_HTML))
+async def marketing_page(): return tracked_html_response(MARKETING_HTML)
 
 @app.get("/login")
 async def login_page():
     if AUTH_PROVIDER == "oidc":
         return RedirectResponse("/api/auth/login", status_code=302)
-    return HTMLResponse(with_matomo_tracking(LOGIN_HTML))
+    return tracked_html_response(LOGIN_HTML)
 
 @app.get("/self-host")
 async def self_host_guide_page():
-    return HTMLResponse(with_matomo_tracking(SELF_HOST_GUIDE_HTML))
+    return tracked_html_response(SELF_HOST_GUIDE_HTML)
 
 @app.get("/downloads/{filename}")
 async def public_download(filename: str):
@@ -4100,7 +4196,7 @@ async def public_download(filename: str):
     )
 
 @app.get("/setup")
-async def setup_page(): return HTMLResponse(with_matomo_tracking(SETUP_HTML))
+async def setup_page(): return tracked_html_response(SETUP_HTML)
 
 @app.get("/api/auth/status")
 async def auth_status(request: Request):
@@ -4151,10 +4247,10 @@ async def auth_login_oidc(request: Request, returnTo: str = "/dashboard"):
 @app.get("/api/auth/callback")
 async def auth_callback(request: Request, code: str = "", state: str = "", error: str = ""):
     if error:
-        return HTMLResponse(f"<h1>Sign in failed</h1><p>{escape(error)}</p>", status_code=400)
+        return tracked_html_response(f"<h1>Sign in failed</h1><p>{escape(error)}</p>", status_code=400)
     pending = parse_pending_payload(request.cookies.get(OIDC_PENDING_COOKIE, ""))
     if not pending or pending.get("state") != state:
-        return HTMLResponse("<h1>Sign in failed</h1><p>Invalid or expired sign-in state.</p>", status_code=400)
+        return tracked_html_response("<h1>Sign in failed</h1><p>Invalid or expired sign-in state.</p>", status_code=400)
     discovery = oidc_discovery()
     token_payload = {
         "grant_type": "authorization_code",
@@ -4169,21 +4265,21 @@ async def auth_callback(request: Request, code: str = "", state: str = "", error
         token_payload["client_secret"] = OIDC_CLIENT_SECRET
     token_response = requests.post(discovery["token_endpoint"], data=token_payload, auth=auth, timeout=10)
     if token_response.status_code >= 400:
-        return HTMLResponse(
+        return tracked_html_response(
             f"<h1>Sign in failed</h1><p>OIDC token exchange failed: {escape(token_response.text[:500])}</p>",
             status_code=502,
         )
     tokens = token_response.json()
     access_token = tokens.get("access_token")
     if not access_token:
-        return HTMLResponse("<h1>Sign in failed</h1><p>OIDC provider did not return an access token.</p>", status_code=502)
+        return tracked_html_response("<h1>Sign in failed</h1><p>OIDC provider did not return an access token.</p>", status_code=502)
     userinfo_response = requests.get(
         discovery["userinfo_endpoint"],
         headers={"Authorization": f"Bearer {access_token}"},
         timeout=10,
     )
     if userinfo_response.status_code >= 400:
-        return HTMLResponse(
+        return tracked_html_response(
             f"<h1>Sign in failed</h1><p>OIDC userinfo failed: {escape(userinfo_response.text[:500])}</p>",
             status_code=502,
         )
@@ -4311,10 +4407,10 @@ async def stripe_webhook(request: Request):
     return {"success": True}
 
 @app.get("/dashboard")
-async def dashboard_page(): return HTMLResponse(with_matomo_tracking(DASHBOARD_HTML))
+async def dashboard_page(): return tracked_html_response(DASHBOARD_HTML)
 
 @app.get("/embedded-vnc")
-async def embedded_vnc_page(): return HTMLResponse(with_matomo_tracking(EMBEDDED_VNC_HTML))
+async def embedded_vnc_page(): return tracked_html_response(EMBEDDED_VNC_HTML)
 
 @app.get("/api/drafts")
 async def list_drafts(userId: str):

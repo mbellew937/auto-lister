@@ -76,6 +76,15 @@ AUTO_MARKETPLACE_PUBLIC_REPO_URL=https://github.com/mbellew937/auto-lister.git
 
 The login page shows a hosted option by default: "Run it on mine" with `$5` struck through, `$1` per post for a limited time, and the first 25 sign-ups receiving 3 free posts. Regenerations do not count; only clicking Publish should consume a paid post in a hosted billing flow.
 
+## Optional Matomo Analytics
+
+Set these to enable pageviews plus non-PII workflow events for setup, auth, photo uploads, AI analysis, draft handling, browser sessions, and Facebook fill progress:
+
+```bash
+MATOMO_URL=https://analytics.example.com
+MATOMO_SITE_ID=1
+```
+
 ## Auth Modes
 
 Default self-host mode is local auth:
