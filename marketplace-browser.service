@@ -1,0 +1,18 @@
+# Obsolete: leave this unit disabled. `marketplace.service` now owns all per-user
+# browser/VNC session lifecycle through `session_manager.py`.
+[Unit]
+Description=Marketplace Shared Browser
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/auto-marketplace
+EnvironmentFile=-/etc/auto-marketplace.env
+Environment=AUTO_MARKETPLACE_APP_DIR=/opt/auto-marketplace
+Environment=AUTO_MARKETPLACE_DATA_DIR=/var/lib/auto-marketplace
+ExecStart=/opt/auto-marketplace/venv/bin/python3 /opt/auto-marketplace/launch_browser.py
+Restart=always
+Environment=DISPLAY=:99
+
+[Install]
+WantedBy=multi-user.target

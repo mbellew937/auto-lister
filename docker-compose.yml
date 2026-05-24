@@ -1,0 +1,20 @@
+services:
+  auto-lister:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      AUTO_MARKETPLACE_APP_DIR: /app
+      AUTO_MARKETPLACE_DATA_DIR: /data
+      AUTO_MARKETPLACE_NOVNC_DIR: /app/noVNC
+    init: true
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    shm_size: "1gb"
+    volumes:
+      - auto_lister_data:/data
+
+volumes:
+  auto_lister_data:

@@ -1,0 +1,15 @@
+[Unit]
+Description=Marketplace Auto-Lister FastAPI App
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/auto-marketplace
+EnvironmentFile=-/etc/auto-marketplace.env
+Environment=AUTO_MARKETPLACE_APP_DIR=/opt/auto-marketplace
+Environment=AUTO_MARKETPLACE_DATA_DIR=/var/lib/auto-marketplace
+ExecStart=/opt/auto-marketplace/start.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
