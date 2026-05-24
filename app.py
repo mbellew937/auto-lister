@@ -1341,7 +1341,7 @@ open https://your-domain-or-ip/setup</pre>
     "__SUPPORT_GITHUB_ISSUES_LINK__", SUPPORT_GITHUB_ISSUES_URL_HTML
 ).replace("__SUPPORT_GITHUB_ISSUES_BLOCK_ATTR__", SUPPORT_GITHUB_ISSUES_BLOCK_ATTR_HTML)
 
-SUPPORT_HTML = """
+SUPPORT_HTML = ("""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1502,7 +1502,7 @@ SUPPORT_HTML = """
     </script>
 </body>
 </html>
-""".replace("__SUPPORT_LINK__", SUPPORT_URL_HTML).replace(
+""").replace("__SUPPORT_LINK__", SUPPORT_URL_HTML).replace(
     "__SUPPORT_MAILTO_LINK__", SUPPORT_MAILTO_URL_HTML
 ).replace("__SUPPORT_EMAIL__", SUPPORT_EMAIL_HTML).replace(
     "__SUPPORT_HELPDESK_LINK__", SUPPORT_HELPDESK_URL_HTML
