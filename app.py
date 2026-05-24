@@ -70,7 +70,30 @@ HOSTED_OFFER_URL = os.environ.get("AUTO_MARKETPLACE_HOSTED_URL", "https://market
 HOSTED_OFFER_PRICE = os.environ.get("AUTO_MARKETPLACE_HOSTED_PRICE", "$1").strip() or "$1"
 HOSTED_OFFER_COMPARE_AT_PRICE = os.environ.get("AUTO_MARKETPLACE_HOSTED_COMPARE_AT_PRICE", "$5").strip()
 HOSTED_FREE_SIGNUP_LIMIT = os.environ.get("AUTO_MARKETPLACE_FREE_SIGNUP_LIMIT", "25").strip() or "25"
-HOSTED_FREE_POSTS = os.environ.get("AUTO_MARKETPLACE_FREE_POSTS", "10").strip() or "10"
+HOSTED_FREE_POSTS = os.environ.get("AUTO_MARKETPLACE_FREE_POSTS", "3").strip() or "3"
+SUPPORT_EMAIL = os.environ.get("AUTO_MARKETPLACE_SUPPORT_EMAIL", "support@mrbtechnologies.com").strip() or "support@mrbtechnologies.com"
+SUPPORT_HELPDESK_URL = os.environ.get("AUTO_MARKETPLACE_SUPPORT_HELPDESK_URL", "https://helpdesk.mrbtechnologies.com").strip()
+SUPPORT_GITHUB_ISSUES_URL = os.environ.get(
+    "AUTO_MARKETPLACE_SUPPORT_GITHUB_ISSUES_URL",
+    "https://github.com/mbellew937/auto-lister/issues",
+).strip()
+SUPPORT_MAILTO_URL = (
+    f"mailto:{SUPPORT_EMAIL}?subject={quote_plus('Auto-Lister support request')}"
+    f"&body={quote_plus('What happened?\\n\\nPage or action:\\n\\nAccount email:\\n\\nScreenshots or logs:\\n')}"
+)
+SUPPORT_URL = os.environ.get("AUTO_MARKETPLACE_SUPPORT_URL", SUPPORT_MAILTO_URL).strip() or SUPPORT_MAILTO_URL
+
+
+def parse_nonnegative_int(value: str, default: int) -> int:
+    try:
+        parsed = int(str(value).strip())
+        return max(0, parsed)
+    except (TypeError, ValueError):
+        return default
+
+
+HOSTED_FREE_SIGNUP_LIMIT_COUNT = parse_nonnegative_int(HOSTED_FREE_SIGNUP_LIMIT, 25)
+HOSTED_FREE_POSTS_COUNT = parse_nonnegative_int(HOSTED_FREE_POSTS, 3)
 
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
@@ -80,7 +103,7 @@ STRIPE_CANCEL_URL = os.environ.get("STRIPE_CANCEL_URL", "https://marketplace.mrb
 
 if STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
-STRIPE_ENABLED = bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID)
+STRIPE_ENABLED = bool(STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET and STRIPE_PRICE_ID)
 
 SELF_HOST_GUIDE_PATH = "/self-host"
 PACKAGE_DOWNLOAD_FILENAME = os.environ.get(
@@ -146,10 +169,18 @@ CASHAPP_LINK_HTML = escape(CASHAPP_LINK, quote=True)
 VENMO_LINK_HTML = escape(VENMO_LINK, quote=True)
 CASHAPP_QR_HTML = escape(CASHAPP_LINK_QR, quote=True)
 VENMO_QR_HTML = escape(VENMO_LINK_QR, quote=True)
+SUPPORT_EMAIL_HTML = escape(SUPPORT_EMAIL)
+SUPPORT_MAILTO_URL_HTML = escape(SUPPORT_MAILTO_URL, quote=True)
+SUPPORT_URL_HTML = escape(SUPPORT_URL, quote=True)
+SUPPORT_HELPDESK_URL_HTML = escape(SUPPORT_HELPDESK_URL, quote=True)
+SUPPORT_GITHUB_ISSUES_URL_HTML = escape(SUPPORT_GITHUB_ISSUES_URL, quote=True)
+SUPPORT_HELPDESK_BLOCK_ATTR_HTML = "" if SUPPORT_HELPDESK_URL else ' style="display:none;"'
+SUPPORT_GITHUB_ISSUES_BLOCK_ATTR_HTML = "" if SUPPORT_GITHUB_ISSUES_URL else ' style="display:none;"'
 CREDIT_HTML = (
     f'<div class="credit">Built by '
     f'<a href="{escape(CREDIT_URL, quote=True)}" target="_blank" rel="noopener noreferrer">'
-    f'{escape(CREDIT_LABEL)}</a></div>'
+    f'{escape(CREDIT_LABEL)}</a> <span class="credit-sep">|</span> '
+    f'<a href="/support" data-track-action="support-open">Support</a></div>'
 )
 HOSTED_OFFER_HTML = (
     f'<div class="hosted-offer">Don\'t have a homelab? '
@@ -157,8 +188,9 @@ HOSTED_OFFER_HTML = (
     f'Run it on mine for '
     f'<span class="old-price">{escape(HOSTED_OFFER_COMPARE_AT_PRICE)}</span> '
     f'<span class="sale-price">{escape(HOSTED_OFFER_PRICE)}</span> per post for a limited time.</a>'
-    f'<span class="hosted-bonus">First {escape(HOSTED_FREE_SIGNUP_LIMIT)} sign-ups get '
-    f'{escape(HOSTED_FREE_POSTS)} free posts (3 free posts after). Regenerations do not count; only clicking Publish uses a post.</span>'
+    f'<span class="hosted-bonus">First {HOSTED_FREE_SIGNUP_LIMIT_COUNT} sign-ups get '
+    f'{HOSTED_FREE_POSTS_COUNT} free posts. New hosted users after that start with 0 free posts. '
+    f'Regenerations do not count; only clicking Publish uses a post.</span>'
     f'</div>'
     if HOSTED_OFFER_URL
     else ""
@@ -562,6 +594,7 @@ MARKETING_HTML = ("""
                 <a href="#workflow">Workflow</a>
                 <a href="__SELF_HOST_GUIDE_LINK__" data-track-action="self-host-guide">Self-host</a>
                 <a href="#hosted">Hosted</a>
+                <a href="/support" data-track-action="support-open">Support</a>
                 <a class="nav-cta" href="__HOSTED_LINK__" data-track-action="hosted-open">Try it out</a>
             </div>
         </nav>
@@ -689,7 +722,7 @@ open https://your-domain.example.com/setup</code></pre>
                         <p>Use the hosted MRB copy instead. It is priced per published post, so AI regenerations and edits do not burn credits.</p>
                         <p>Limited-time launch price: <br><span class="old-price">""" + escape(HOSTED_OFFER_COMPARE_AT_PRICE) + """</span> <span class="sale-price">""" + escape(HOSTED_OFFER_PRICE) + """</span> / post.</p>
                         <a class="btn green" href="__HOSTED_LINK__" data-track-action="hosted-open" style="width: 100%;">Use Hosted App</a>
-                        <div class="bonus">First """ + escape(HOSTED_FREE_SIGNUP_LIMIT) + """ sign-ups get """ + escape(HOSTED_FREE_POSTS) + """ free posts. Only clicking Publish uses a post.</div>
+                        <div class="bonus">First """ + str(HOSTED_FREE_SIGNUP_LIMIT_COUNT) + """ sign-ups get """ + str(HOSTED_FREE_POSTS_COUNT) + """ free posts. New hosted users after that start with 0 free posts. Only clicking Publish uses a post.</div>
                     </aside>
                 </div>
             </div>
@@ -1129,8 +1162,17 @@ SELF_HOST_GUIDE_HTML = """
         }
         .support-block:hover { transform: translateY(-3px); border-color: rgba(59,130,246,0.3); }
         .support-block h3 { color: #f8fafc; font-size: 1.1rem; margin-bottom: 16px; font-weight: 800; }
+        .support-block p { color: #94a3b8; font-size: 0.92rem; line-height: 1.55; margin-bottom: 16px; }
         .support-block img { width: 100%; max-width: 180px; background: white; border-radius: 12px; padding: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); margin-bottom: 16px; }
         .support-block .handle { display: inline-block; font-size: 1rem; color: #60a5fa; font-weight: 700; text-decoration: none; }
+        .support-block .support-btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-height: 40px; padding: 0 16px; border-radius: 10px;
+            background: rgba(59,130,246,0.14); color: #bfdbfe;
+            border: 1px solid rgba(59,130,246,0.24); font-weight: 800;
+            text-decoration: none;
+        }
+        .support-block .support-btn:hover { background: rgba(59,130,246,0.22); }
         
         .back {
             display: inline-flex; align-items: center; gap: 8px; margin-top: 32px;
@@ -1210,6 +1252,28 @@ open https://your-domain-or-ip/setup</pre>
             </div>
 
             <div class="support-section">
+                <h2>Need Help?</h2>
+                <p>Open a support request when installation, login, browser sessions, AI analysis, or Facebook fill fails.</p>
+                <div class="support-grid">
+                    <div class="support-block">
+                        <h3>Email</h3>
+                        <p>Include what happened, the page or action, account email, and any screenshots or logs.</p>
+                        <a href="__SUPPORT_MAILTO_LINK__" class="support-btn" data-track-action="support-email">__SUPPORT_EMAIL__</a>
+                    </div>
+                    <div class="support-block"__SUPPORT_HELPDESK_BLOCK_ATTR__>
+                        <h3>Helpdesk</h3>
+                        <p>Use the helpdesk for hosted account, billing, and production support requests.</p>
+                        <a href="__SUPPORT_HELPDESK_LINK__" class="support-btn" data-track-action="support-helpdesk" target="_blank" rel="noopener noreferrer">Open Helpdesk</a>
+                    </div>
+                    <div class="support-block"__SUPPORT_GITHUB_ISSUES_BLOCK_ATTR__>
+                        <h3>GitHub Issues</h3>
+                        <p>Report self-host bugs with your version, deployment type, and sanitized logs.</p>
+                        <a href="__SUPPORT_GITHUB_ISSUES_LINK__" class="support-btn" data-track-action="support-github" target="_blank" rel="noopener noreferrer">Open Issues</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="support-section">
                 <h2>Support the Developer</h2>
                 <p>If you find this self-hosted tool valuable, consider sending a tip to support future updates.</p>
                 <div class="support-grid">
@@ -1268,7 +1332,182 @@ open https://your-domain-or-ip/setup</pre>
     "__CASHAPP_QR__", CASHAPP_QR_HTML
 ).replace("__CASHAPP_HANDLE__", CASHAPP_HANDLE_HTML).replace(
     "__VENMO_LINK__", VENMO_LINK_HTML
-).replace("__VENMO_QR__", VENMO_QR_HTML).replace("__VENMO_HANDLE__", VENMO_HANDLE_HTML)
+).replace("__VENMO_QR__", VENMO_QR_HTML).replace("__VENMO_HANDLE__", VENMO_HANDLE_HTML).replace(
+    "__SUPPORT_MAILTO_LINK__", SUPPORT_MAILTO_URL_HTML
+).replace("__SUPPORT_EMAIL__", SUPPORT_EMAIL_HTML).replace(
+    "__SUPPORT_HELPDESK_LINK__", SUPPORT_HELPDESK_URL_HTML
+).replace("__SUPPORT_HELPDESK_BLOCK_ATTR__", SUPPORT_HELPDESK_BLOCK_ATTR_HTML).replace(
+    "__SUPPORT_GITHUB_ISSUES_LINK__", SUPPORT_GITHUB_ISSUES_URL_HTML
+).replace("__SUPPORT_GITHUB_ISSUES_BLOCK_ATTR__", SUPPORT_GITHUB_ISSUES_BLOCK_ATTR_HTML)
+
+SUPPORT_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Auto-Lister Support</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Contact Auto-Lister support for hosted, billing, installation, browser, AI analysis, and Facebook fill issues.">
+    <meta name="theme-color" content="#080d14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@500;700;900&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            min-height: 100dvh; font-family: 'Inter', system-ui, sans-serif;
+            background: #080d14; color: #e2e8f0;
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: inherit; }
+        .topbar {
+            position: sticky; top: 0; z-index: 10;
+            background: rgba(8,13,20,0.9); backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .nav {
+            width: min(1120px, calc(100% - 32px)); min-height: 68px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between; gap: 18px;
+        }
+        .brand {
+            display: inline-flex; align-items: center; gap: 12px;
+            color: #f8fafc; text-decoration: none; font-weight: 900;
+            font-family: 'Outfit', sans-serif; font-size: 1.2rem;
+        }
+        .brand-mark {
+            width: 38px; height: 38px; border-radius: 10px;
+            display: grid; place-items: center;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: #fff; font-size: 0.82rem; font-weight: 900;
+        }
+        .nav-links { display: flex; align-items: center; gap: 18px; }
+        .nav-links a { color: #94a3b8; font-weight: 700; text-decoration: none; font-size: 0.92rem; }
+        .nav-links a:hover { color: #f8fafc; }
+        main { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 64px 0; }
+        .hero { max-width: 760px; margin-bottom: 36px; }
+        .kicker { color: #60a5fa; font-size: 0.78rem; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px; }
+        h1 { color: #f8fafc; font-family: 'Outfit', sans-serif; font-size: clamp(2.2rem, 5vw, 4.2rem); line-height: 1.04; margin-bottom: 18px; }
+        .lead { color: #94a3b8; font-size: 1.08rem; line-height: 1.65; max-width: 680px; }
+        .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 26px; }
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-height: 48px; padding: 0 20px; border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1); text-decoration: none;
+            font-weight: 800;
+        }
+        .btn.primary { background: #f8fafc; color: #0f172a; border-color: #f8fafc; }
+        .btn.secondary { background: rgba(255,255,255,0.05); color: #f8fafc; }
+        .method-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 18px; margin: 34px 0;
+        }
+        .method {
+            border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+            background: #0f172a; padding: 24px; min-height: 220px;
+            display: flex; flex-direction: column; gap: 14px;
+        }
+        .method h2 { color: #f8fafc; font-size: 1.1rem; font-weight: 900; }
+        .method p { color: #94a3b8; line-height: 1.55; font-size: 0.95rem; }
+        .method a { color: #bfdbfe; text-decoration: none; font-weight: 800; margin-top: auto; overflow-wrap: anywhere; }
+        .method a:hover { color: #f8fafc; }
+        .details {
+            border-top: 1px solid rgba(255,255,255,0.08);
+            padding-top: 28px; color: #94a3b8; line-height: 1.65;
+        }
+        .details h2 { color: #f8fafc; font-size: 1.2rem; margin-bottom: 12px; }
+        .details ul { margin-left: 20px; display: grid; gap: 8px; }
+        .footer { color: #64748b; font-size: 0.9rem; padding: 36px 0; text-align: center; border-top: 1px solid rgba(255,255,255,0.06); }
+        .footer a { color: #94a3b8; text-decoration: none; font-weight: 700; }
+        @media (max-width: 640px) {
+            .nav { min-height: 60px; }
+            .nav-links { gap: 12px; }
+            .nav-links a:nth-child(2) { display: none; }
+            main { padding: 38px 0; }
+            .actions { flex-direction: column; }
+            .btn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <nav class="nav">
+            <a class="brand" href="/"><span class="brand-mark">AL</span><span>Auto-Lister</span></a>
+            <div class="nav-links">
+                <a href="/self-host" data-track-action="self-host-guide">Self-host</a>
+                <a href="/api/auth/login" data-track-action="hosted-open">Try it out</a>
+            </div>
+        </nav>
+    </header>
+    <main>
+        <section class="hero">
+            <div class="kicker">Support</div>
+            <h1>Get help with Auto-Lister.</h1>
+            <p class="lead">Use the quickest support channel for hosted account, billing, installation, browser session, AI analysis, and Facebook fill issues.</p>
+            <div class="actions">
+                <a class="btn primary" href="__SUPPORT_LINK__" data-track-action="support-primary">Open Support</a>
+                <a class="btn secondary" href="__SUPPORT_MAILTO_LINK__" data-track-action="support-email">Email __SUPPORT_EMAIL__</a>
+            </div>
+        </section>
+
+        <section class="method-grid">
+            <article class="method">
+                <h2>Email</h2>
+                <p>Best for account-specific or private support details.</p>
+                <a href="__SUPPORT_MAILTO_LINK__" data-track-action="support-email">__SUPPORT_EMAIL__</a>
+            </article>
+            <article class="method"__SUPPORT_HELPDESK_BLOCK_ATTR__>
+                <h2>Helpdesk</h2>
+                <p>Best for hosted app access, billing questions, and production incidents.</p>
+                <a href="__SUPPORT_HELPDESK_LINK__" data-track-action="support-helpdesk" target="_blank" rel="noopener noreferrer">Open Helpdesk</a>
+            </article>
+            <article class="method"__SUPPORT_GITHUB_ISSUES_BLOCK_ATTR__>
+                <h2>GitHub Issues</h2>
+                <p>Best for self-host bugs, installation problems, and reproducible defects.</p>
+                <a href="__SUPPORT_GITHUB_ISSUES_LINK__" data-track-action="support-github" target="_blank" rel="noopener noreferrer">Open Issues</a>
+            </article>
+        </section>
+
+        <section class="details">
+            <h2>Include These Details</h2>
+            <ul>
+                <li>What happened and what you expected instead.</li>
+                <li>The page or action where it failed.</li>
+                <li>Your account email, if it is a hosted app issue.</li>
+                <li>Browser, deployment type, version, and sanitized logs for self-host issues.</li>
+                <li>Screenshots when the browser session or Facebook fill looks wrong.</li>
+            </ul>
+        </section>
+    </main>
+    <div class="footer">""" + CREDIT_HTML + """</div>
+    <script>
+        (function() {
+            function trackSupportAction(action) {
+                try {
+                    if (window.trackAutoListerEvent) {
+                        window.trackAutoListerEvent("support", "click", action);
+                    } else if (window._paq && typeof window._paq.push === "function") {
+                        window._paq.push(["trackEvent", "support", "click", action]);
+                    }
+                } catch (e) {}
+            }
+            document.addEventListener("DOMContentLoaded", function() {
+                document.querySelectorAll("[data-track-action]").forEach(function(elem) {
+                    elem.addEventListener("click", function() {
+                        var action = elem.getAttribute("data-track-action");
+                        if (action) trackSupportAction(action);
+                    });
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
+""".replace("__SUPPORT_LINK__", SUPPORT_URL_HTML).replace(
+    "__SUPPORT_MAILTO_LINK__", SUPPORT_MAILTO_URL_HTML
+).replace("__SUPPORT_EMAIL__", SUPPORT_EMAIL_HTML).replace(
+    "__SUPPORT_HELPDESK_LINK__", SUPPORT_HELPDESK_URL_HTML
+).replace("__SUPPORT_HELPDESK_BLOCK_ATTR__", SUPPORT_HELPDESK_BLOCK_ATTR_HTML).replace(
+    "__SUPPORT_GITHUB_ISSUES_LINK__", SUPPORT_GITHUB_ISSUES_URL_HTML
+).replace("__SUPPORT_GITHUB_ISSUES_BLOCK_ATTR__", SUPPORT_GITHUB_ISSUES_BLOCK_ATTR_HTML)
 
 EMBEDDED_VNC_HTML = """
 <!DOCTYPE html>
@@ -1805,6 +2044,8 @@ DASHBOARD_HTML = """
         @media(min-width:640px){ #user-email { display: block; } }
         .btn-ghost { background: transparent; border: 1px solid var(--border2); color: #94a3b8; padding: 6px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
         .btn-ghost:hover { background: rgba(255,255,255,0.06); }
+        a.btn-ghost { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+        a.btn-ghost:hover { text-decoration: none; }
 
         /* ══ MOBILE LAYOUT ══ */
         .m-layout {
@@ -2474,6 +2715,7 @@ DASHBOARD_HTML = """
         <span id=\"user-credits\" style=\"display:none; color:#10b981; font-weight:800; font-size:0.85rem; margin-right:8px;\"></span>
         <button id=\"buy-credits-btn\" class=\"btn-ghost\" style=\"display:none; border-color:rgba(16,185,129,0.3); color:#10b981;\" onclick=\"buyCredits()\">Buy Posts</button>
         <span id=\"user-email\"></span>
+        <a class=\"btn-ghost\" href=\"/support\" target=\"_blank\" rel=\"noopener noreferrer\" onclick=\"trackAppAction('support-open')\">Support</a>
         <button class=\"btn-ghost\" onclick=\"signOut()\">Sign out</button>
     </div>
 </header>
@@ -3948,6 +4190,7 @@ def upsert_oidc_user(profile: dict) -> dict:
     return user
 
 CREDITS_FILE = os.path.join(BASE_DIR, "credits.json")
+PAYMENTS_FILE = os.path.join(BASE_DIR, "payments.json")
 
 def _load_credits() -> dict:
     return _read_json_file(CREDITS_FILE, {})
@@ -3955,13 +4198,36 @@ def _load_credits() -> dict:
 def _save_credits(data: dict):
     _write_json_file(CREDITS_FILE, data)
 
+def _load_payments() -> dict:
+    payments = _read_json_file(PAYMENTS_FILE, {})
+    return payments if isinstance(payments, dict) else {}
+
+def _save_payments(data: dict):
+    _write_json_file(PAYMENTS_FILE, data)
+
+def hosted_signup_index(user_id: str) -> Optional[int]:
+    users = [user for user in _load_users() if user.get("id")]
+    if not users:
+        return None
+    users.sort(key=lambda user: (user.get("created_at") or "", user.get("id") or ""))
+    for index, user in enumerate(users):
+        if user.get("id") == user_id:
+            return index
+    return None
+
 def get_user_credits(user_id: str) -> int:
     credits = _load_credits()
     if user_id not in credits:
-        if len(credits) < int(HOSTED_FREE_SIGNUP_LIMIT):
-            credits[user_id] = int(HOSTED_FREE_POSTS)
+        signup_index = hosted_signup_index(user_id)
+        eligible_for_free_posts = (
+            signup_index < HOSTED_FREE_SIGNUP_LIMIT_COUNT
+            if signup_index is not None
+            else len(credits) < HOSTED_FREE_SIGNUP_LIMIT_COUNT
+        )
+        if eligible_for_free_posts:
+            credits[user_id] = HOSTED_FREE_POSTS_COUNT
         else:
-            credits[user_id] = 3
+            credits[user_id] = 0
         _save_credits(credits)
     return credits[user_id]
 
@@ -3979,6 +4245,27 @@ def add_credits(user_id: str, amount: int):
         credits[user_id] = 0
     credits[user_id] += amount
     _save_credits(credits)
+
+def record_paid_credit(session: dict) -> bool:
+    user_id = session.get("client_reference_id")
+    if not user_id:
+        return False
+    session_id = session.get("id")
+    payments = _load_payments()
+    processed = payments.setdefault("processed_checkout_sessions", {})
+    if session_id and session_id in processed:
+        return False
+    add_credits(user_id, 1)
+    if session_id:
+        processed[session_id] = {
+            "user_id": user_id,
+            "amount_total": session.get("amount_total"),
+            "currency": session.get("currency"),
+            "payment_status": session.get("payment_status"),
+            "recorded_at": datetime.utcnow().isoformat() + "Z",
+        }
+        _save_payments(payments)
+    return True
 
 def copy_images_to_dir(image_paths: List[str], target_dir: str) -> List[str]:
     os.makedirs(target_dir, exist_ok=True)
@@ -4178,6 +4465,10 @@ async def login_page():
 async def self_host_guide_page():
     return tracked_html_response(SELF_HOST_GUIDE_HTML)
 
+@app.get("/support")
+async def support_page():
+    return tracked_html_response(SUPPORT_HTML)
+
 @app.get("/downloads/{filename}")
 async def public_download(filename: str):
     safe_name = os.path.basename(filename)
@@ -4371,7 +4662,6 @@ async def create_checkout_session(request: Request):
     
     try:
         session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
             line_items=[{
                 'price': STRIPE_PRICE_ID,
                 'quantity': 1,
@@ -4380,6 +4670,7 @@ async def create_checkout_session(request: Request):
             success_url=STRIPE_SUCCESS_URL,
             cancel_url=STRIPE_CANCEL_URL,
             client_reference_id=user_id,
+            metadata={'auto_lister_user_id': user_id},
         )
         return {"success": True, "url": session.url}
     except Exception as e:
@@ -4398,11 +4689,11 @@ async def stripe_webhook(request: Request):
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)}, status_code=400)
     
-    if event['type'] == 'checkout.session.completed':
+    if event['type'] in {'checkout.session.completed', 'checkout.session.async_payment_succeeded'}:
         session = event['data']['object']
-        user_id = session.get('client_reference_id')
-        if user_id:
-            add_credits(user_id, 1)
+        if event['type'] == 'checkout.session.completed' and session.get('payment_status') != 'paid':
+            return {"success": True}
+        record_paid_credit(session)
             
     return {"success": True}
 

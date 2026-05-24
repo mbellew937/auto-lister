@@ -7,6 +7,11 @@
 - Expanded Matomo coverage from pageviews and marketing CTAs to auth, setup,
   dashboard workflows, photo storage, AI analysis, Facebook fill status,
   embedded browser connection events, and self-host guide command copies.
+- Added a public `/support` page with email, helpdesk, and GitHub issue links,
+  plus support links from the marketing page, self-host guide, and dashboard.
+- Tightened hosted credit defaults to first 25 users receiving 3 free publish
+  credits, later users starting at 0, and Stripe Checkout requiring webhook
+  configuration before billing turns on.
 
 ## 2026.05.16
 

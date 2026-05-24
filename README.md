@@ -72,9 +72,23 @@ AUTO_MARKETPLACE_FREE_SIGNUP_LIMIT=25
 AUTO_MARKETPLACE_FREE_POSTS=3
 AUTO_MARKETPLACE_PACKAGE_DOWNLOAD_URL=https://marketplace.mrbtechnologies.com/downloads/auto-lister-self-host.tar.gz
 AUTO_MARKETPLACE_PUBLIC_REPO_URL=https://github.com/mbellew937/auto-lister.git
+AUTO_MARKETPLACE_SUPPORT_EMAIL=support@mrbtechnologies.com
+AUTO_MARKETPLACE_SUPPORT_HELPDESK_URL=https://helpdesk.mrbtechnologies.com
+AUTO_MARKETPLACE_SUPPORT_GITHUB_ISSUES_URL=https://github.com/mbellew937/auto-lister/issues
 ```
 
-The login page shows a hosted option by default: "Run it on mine" with `$5` struck through, `$1` per post for a limited time, and the first 25 sign-ups receiving 3 free posts. Regenerations do not count; only clicking Publish should consume a paid post in a hosted billing flow.
+The login page shows a hosted option by default: "Run it on mine" with `$5` struck through, `$1` per post for a limited time, and the first 25 sign-ups receiving 3 free posts. New hosted users after that start with 0 free posts. Regenerations do not count; only clicking Publish should consume a paid post in a hosted billing flow.
+
+## Support
+
+The app exposes `/support` with email, helpdesk, and GitHub issue links. Configure these for your own install:
+
+```bash
+AUTO_MARKETPLACE_SUPPORT_EMAIL=support@example.com
+AUTO_MARKETPLACE_SUPPORT_URL=mailto:support@example.com
+AUTO_MARKETPLACE_SUPPORT_HELPDESK_URL=https://helpdesk.example.com
+AUTO_MARKETPLACE_SUPPORT_GITHUB_ISSUES_URL=https://github.com/you/auto-lister/issues
+```
 
 ## Optional Matomo Analytics
 
@@ -103,6 +117,7 @@ Recommended shape:
 
 - Use Stripe Checkout Sessions for one-time per-post purchases.
 - Store the self-hoster's `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRICE_ID` only on the server.
+- Configure the Stripe webhook endpoint at `https://your-domain.example.com/api/webhook` and send `checkout.session.completed` plus `checkout.session.async_payment_succeeded`.
 - Credit or charge only when the user actually clicks Publish.
 - Do not charge for re-analysis, regeneration, photo upload, draft creation, or edits.
 - Use Stripe Connect only if you are running a central platform and need to onboard sellers or take an application fee.
