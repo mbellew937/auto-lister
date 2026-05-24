@@ -101,7 +101,7 @@ PUBLIC_REPO_URL = os.environ.get(
     "AUTO_MARKETPLACE_PUBLIC_REPO_URL",
     "https://github.com/mbellew937/auto-lister.git",
 ).strip()
-REPO_DOWNLOAD_URL = os.environ.get("AUTO_MARKETPLACE_REPO_DOWNLOAD_URL", PUBLIC_REPO_URL).strip()
+REPO_DOWNLOAD_URL = (os.environ.get("AUTO_MARKETPLACE_REPO_DOWNLOAD_URL") or PUBLIC_REPO_URL).strip()
 if is_private_distribution_url(REPO_DOWNLOAD_URL):
     REPO_DOWNLOAD_URL = ""
 CASHAPP_HANDLE = os.environ.get("AUTO_MARKETPLACE_CASHAPP_HANDLE", "$michaelbellew").strip() or "$michaelbellew"
