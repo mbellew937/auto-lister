@@ -77,9 +77,10 @@ SUPPORT_GITHUB_ISSUES_URL = os.environ.get(
     "AUTO_MARKETPLACE_SUPPORT_GITHUB_ISSUES_URL",
     "https://github.com/mbellew937/auto-lister/issues",
 ).strip()
+SUPPORT_MAILTO_BODY = "What happened?\n\nPage or action:\n\nAccount email:\n\nScreenshots or logs:\n"
 SUPPORT_MAILTO_URL = (
     f"mailto:{SUPPORT_EMAIL}?subject={quote_plus('Auto-Lister support request')}"
-    f"&body={quote_plus('What happened?\\n\\nPage or action:\\n\\nAccount email:\\n\\nScreenshots or logs:\\n')}"
+    f"&body={quote_plus(SUPPORT_MAILTO_BODY)}"
 )
 SUPPORT_URL = os.environ.get("AUTO_MARKETPLACE_SUPPORT_URL", SUPPORT_MAILTO_URL).strip() or SUPPORT_MAILTO_URL
 
