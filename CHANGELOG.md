@@ -12,6 +12,9 @@
 - Tightened hosted credit defaults to first 25 users receiving 3 free publish
   credits, later users starting at 0, and Stripe Checkout requiring webhook
   configuration before billing turns on.
+- Changed Photo Storage from click-to-analyze photo sets into a selectable photo
+  library. Stored photos now stay saved until the user explicitly picks photos
+  and runs Analyze Selected.
 
 ## 2026.05.16
 

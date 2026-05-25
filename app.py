@@ -2171,6 +2171,35 @@ DASHBOARD_HTML = """
             color: var(--muted);
             font-weight: 700;
         }
+        .storage-library-actions {
+            display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+            padding: 0.8rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.05);
+            background: rgba(8,13,20,0.2);
+        }
+        .storage-selected-count { color: var(--muted); font-size: 0.8rem; font-weight: 700; }
+        .storage-analyze-btn {
+            border: 1px solid rgba(16,185,129,0.32); border-radius: 8px;
+            background: rgba(16,185,129,0.14); color: #86efac;
+            min-height: 34px; padding: 0 12px; font-size: 0.8rem; font-weight: 800;
+            cursor: pointer;
+        }
+        .storage-analyze-btn:disabled { opacity: 0.45; cursor: default; }
+        .storage-photo-thumb {
+            width: 46px; height: 46px; border-radius: 10px; object-fit: cover;
+            border: 1px solid rgba(255,255,255,0.12); background: var(--surface2); flex-shrink: 0;
+        }
+        .storage-photo-select {
+            width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center;
+            border: 1px solid rgba(148,163,184,0.36); color: transparent; flex-shrink: 0;
+            font-size: 0.82rem; font-weight: 900;
+        }
+        .storage-photo-selected {
+            border-color: rgba(16,185,129,0.5) !important;
+            background: rgba(16,185,129,0.08);
+        }
+        .storage-photo-selected .storage-photo-select {
+            color: #052e16; background: #86efac; border-color: #86efac;
+        }
 
         /* photo step */
         .step-heading { font-size: 1.4rem; font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; }
@@ -2393,6 +2422,15 @@ DASHBOARD_HTML = """
         .d-draft-badge { flex-shrink: 0; background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); border-radius: 6px; padding: 3px 9px; font-size: 0.75rem; font-weight: 700; }
         .d-draft-delete { flex-shrink: 0; background: rgba(239,68,68,0.12); color: #fca5a5; border: 1px solid rgba(239,68,68,0.25); border-radius: 6px; padding: 3px 9px; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
         .d-storage-badge { flex-shrink: 0; background: rgba(16,185,129,0.12); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.24); border-radius: 6px; padding: 3px 9px; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+        .d-storage-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-bottom: 0.6rem; }
+        .d-storage-toolbar span { color: var(--muted); font-size: 0.76rem; font-weight: 700; }
+        .d-storage-toolbar button {
+            border: 1px solid rgba(16,185,129,0.32); border-radius: 8px;
+            background: rgba(16,185,129,0.14); color: #86efac;
+            min-height: 34px; padding: 0 12px; font-size: 0.78rem; font-weight: 800;
+            cursor: pointer;
+        }
+        .d-storage-toolbar button:disabled { opacity: 0.45; cursor: default; }
 
         .upload-zone-d {
             border: 2px dashed var(--border2); border-radius: var(--radius); padding: 2rem 1.5rem;
@@ -3004,7 +3042,9 @@ function trackAppAction(action, name='', value) {
 
 // ── draft IDs stored separately so onclick can look them up without HTML escaping issues ──
 const draftMap = {};
-const photoSetMap = {};
+const storagePhotoMap = {};
+let storagePhotoItems = [];
+const selectedStoragePhotoIds = new Set();
 
 async function loadCredits(userId) {
     if (!userId) return;
@@ -3099,7 +3139,7 @@ async function loadPhotoStorageList() {
     try {
         const res = await fetch(`/api/photo-storage?userId=${userId}`);
         const data = await res.json();
-        renderPhotoStorageList(data.success ? (data.photo_sets || []) : []);
+        renderPhotoStorageList(data.success ? (data.photos || []) : []);
     } catch(e) {
         renderPhotoStorageList([]);
     }
@@ -3155,46 +3195,80 @@ function toggleDraftsDrawer() {
     chev.classList.toggle('open', !open);
 }
 
-function renderPhotoStorageList(photoSets) {
-    photoSets.forEach(s => { photoSetMap[s.id] = s.id; });
+function renderPhotoStorageList(photos) {
+    storagePhotoItems = photos || [];
+    Object.keys(storagePhotoMap).forEach(k => delete storagePhotoMap[k]);
+    storagePhotoItems.forEach(photo => { storagePhotoMap[photo.id] = photo; });
+    for (const id of Array.from(selectedStoragePhotoIds)) {
+        if (!storagePhotoMap[id]) selectedStoragePhotoIds.delete(id);
+    }
+    const selectedCount = selectedStoragePhotoIds.size;
 
     if (isMobile) {
         const drawer = document.getElementById('mStorageDrawer');
         const body = document.getElementById('mStorageBody');
         const countEl = document.getElementById('mStorageCount');
-        if (!photoSets.length) {
+        if (!storagePhotoItems.length) {
             drawer.style.display = 'none';
             return;
         }
         drawer.style.display = 'block';
-        countEl.textContent = `${photoSets.length} Photo Set${photoSets.length > 1 ? 's' : ''}`;
-        body.innerHTML = photoSets.map(s => `
-            <div class="draft-item" onclick="createListingFromStorage('${s.id}')">
-                <div class="draft-icon">🖼️</div>
+        countEl.textContent = `${storagePhotoItems.length} Stored Photo${storagePhotoItems.length > 1 ? 's' : ''}`;
+        body.innerHTML = `
+            <div class="storage-library-actions">
+                <span class="storage-selected-count">${selectedCount} selected</span>
+                <button type="button" class="storage-analyze-btn" onclick="createListingFromStorage()" ${selectedCount ? '' : 'disabled'}>Analyze Selected</button>
+            </div>
+            ${storagePhotoItems.map(photo => {
+                const selected = selectedStoragePhotoIds.has(photo.id);
+                return `
+            <div class="draft-item ${selected ? 'storage-photo-selected' : ''}" onclick="toggleStoragePhoto('${photo.id}')">
+                <img class="storage-photo-thumb" src="${storagePhotoImageUrl(photo)}" alt="">
                 <div class="draft-info">
-                    <div class="draft-title">${escHtml(photoSetTitle(s))}</div>
-                    <div class="draft-meta">${escHtml(photoSetMetaText(s))}</div>
+                    <div class="draft-title">${escHtml(storagePhotoTitle(photo))}</div>
+                    <div class="draft-meta">${escHtml(storagePhotoMetaText(photo))}</div>
                 </div>
                 <div class="draft-actions">
-                    <button type="button" class="draft-resume-btn" onclick="event.stopPropagation();createListingFromStorage('${s.id}')">Analyze</button>
+                    <span class="storage-photo-select">${selected ? '✓' : ''}</span>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+            }).join('')}
+        `;
     } else {
         const list = document.getElementById('dStorageList');
-        list.innerHTML = photoSets.map(s => `
-            <div class="d-draft-item" onclick="createListingFromStorage('${s.id}')">
-                <div class="d-draft-icon">🖼️</div>
+        if (!storagePhotoItems.length) {
+            list.innerHTML = '';
+            return;
+        }
+        list.innerHTML = `
+            <div class="d-storage-toolbar">
+                <span>${selectedCount} selected</span>
+                <button type="button" onclick="createListingFromStorage()" ${selectedCount ? '' : 'disabled'}>Analyze Selected</button>
+            </div>
+            ${storagePhotoItems.map(photo => {
+                const selected = selectedStoragePhotoIds.has(photo.id);
+                return `
+            <div class="d-draft-item ${selected ? 'storage-photo-selected' : ''}" onclick="toggleStoragePhoto('${photo.id}')">
+                <img class="storage-photo-thumb" src="${storagePhotoImageUrl(photo)}" alt="">
                 <div style="flex:1;min-width:0;">
-                    <div class="d-draft-title">${escHtml(photoSetTitle(s))}</div>
-                    <div class="d-draft-meta">${escHtml(photoSetMetaText(s))}</div>
+                    <div class="d-draft-title">${escHtml(storagePhotoTitle(photo))}</div>
+                    <div class="d-draft-meta">${escHtml(storagePhotoMetaText(photo))}</div>
                 </div>
                 <div class="d-draft-actions">
-                    <button type="button" class="d-storage-badge" onclick="event.stopPropagation();createListingFromStorage('${s.id}')">Analyze</button>
+                    <span class="storage-photo-select">${selected ? '✓' : ''}</span>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+            }).join('')}
+        `;
     }
+}
+
+function toggleStoragePhoto(photoId) {
+    if (!storagePhotoMap[photoId]) return;
+    if (selectedStoragePhotoIds.has(photoId)) selectedStoragePhotoIds.delete(photoId);
+    else selectedStoragePhotoIds.add(photoId);
+    trackAppAction(selectedStoragePhotoIds.has(photoId) ? 'storage-photo-selected' : 'storage-photo-deselected', device);
+    renderPhotoStorageList(storagePhotoItems);
 }
 
 function toggleStorageDrawer() {
@@ -3292,14 +3366,17 @@ function draftMetaText(d) {
     return d.missing_images ? `${base} · Missing ${d.missing_images} photo${d.missing_images > 1 ? 's' : ''}` : base;
 }
 
-function photoSetTitle(s) {
-    const count = Number(s.photo_count || (s.image_paths || []).length || 0);
-    return count === 1 ? '1 stored photo' : `${count} stored photos`;
+function storagePhotoTitle(photo) {
+    return photo?.filename || 'Stored photo';
 }
 
-function photoSetMetaText(s) {
-    const count = Number(s.photo_count || (s.image_paths || []).length || 0);
-    return `${count} photo${count === 1 ? '' : 's'} · ${fmtAge(s.saved_at)}`;
+function storagePhotoMetaText(photo) {
+    const source = photo?.source_set_id ? 'Saved upload' : 'Photo library';
+    return `${source} · ${fmtAge(photo?.saved_at)}`;
+}
+
+function storagePhotoImageUrl(photo) {
+    return `/api/photo-storage/photo/${encodeURIComponent(photo.id)}?userId=${encodeURIComponent(userId)}`;
 }
 
 function setStorageStatus(msg, type='busy') {
@@ -3724,26 +3801,31 @@ async function desktopAnalyze() {
     document.getElementById('dAnalyzeBtn').disabled = false;
 }
 
-async function createListingFromStorage(photoSetId) {
-    if (!photoSetId || storageCreateInFlight) return false;
+async function createListingFromStorage() {
+    const photoIds = Array.from(selectedStoragePhotoIds);
+    if (!photoIds.length) {
+        setStorageStatus('Pick one or more stored photos first.', 'err');
+        return false;
+    }
+    if (storageCreateInFlight) return false;
     storageCreateInFlight = true;
-    trackAppAction('storage-create-listing-start');
+    trackAppAction('storage-create-listing-start', device, photoIds.length);
     if (isMobile) {
         showStep('mStep2');
-        setMStatus('Analyzing stored photos…');
+        setMStatus('Analyzing selected stored photos…');
         document.getElementById('mResults').style.display = 'none';
         document.getElementById('mPostCard').style.display = 'none';
         document.getElementById('mPostStatus').style.display = 'none';
         document.getElementById('mFillStatus').style.display = 'none';
     } else {
-        setDStatus('Analyzing stored photos…');
+        setDStatus('Analyzing selected stored photos…');
         document.getElementById('dResults').style.display = 'none';
     }
     try {
         const res = await fetch('/api/photo-storage/create-listing', {
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ userId, photoSetId }),
+            body: JSON.stringify({ userId, photoIds }),
         });
         const result = await res.json();
         if (!result.success) {
@@ -3754,14 +3836,16 @@ async function createListingFromStorage(photoSetId) {
         }
         currentDraftId = result.draft_id;
         hasAnalysis = true;
-        trackAppAction('storage-create-listing-success');
+        trackAppAction('storage-create-listing-success', device, photoIds.length);
+        selectedStoragePhotoIds.clear();
         await loadDraftsList();
+        await loadPhotoStorageList();
         if (isMobile) {
             setMStatus('');
             renderMobileResults(result.details);
         } else {
             renderDesktopResults(result.details);
-            setDStatus('Listing created from stored photos.', 'ok');
+            setDStatus('Listing created from selected stored photos.', 'ok');
         }
         return true;
     } catch(e) {
@@ -4378,6 +4462,8 @@ def photo_sets_for_user(user_id: str) -> List[dict]:
         try:
             with open(os.path.join(user_dir, fname)) as f:
                 data = json.load(f)
+            if data.get("type") == "stored_photo":
+                continue
             image_paths = [path for path in data.get("image_paths", []) if os.path.exists(path)]
             data["image_paths"] = image_paths
             data["photo_count"] = len(image_paths)
@@ -4387,6 +4473,100 @@ def photo_sets_for_user(user_id: str) -> List[dict]:
             pass
     results.sort(key=lambda item: item.get("saved_at", ""), reverse=True)
     return results
+
+def storage_photo_id(source_id: str, path: str, index: int = 0) -> str:
+    digest = hashlib.sha1(f"{source_id}:{index}:{os.path.abspath(path)}".encode("utf-8")).hexdigest()
+    return digest[:24]
+
+def stored_photos_for_user(user_id: str) -> List[dict]:
+    results = []
+    user_dir = os.path.join(PHOTO_STORAGE_DIR, user_id)
+    if not os.path.isdir(user_dir):
+        return results
+    for fname in os.listdir(user_dir):
+        if not fname.endswith(".json"):
+            continue
+        meta_path = os.path.join(user_dir, fname)
+        try:
+            with open(meta_path) as f:
+                data = json.load(f)
+        except Exception:
+            continue
+        saved_at = data.get("saved_at", "")
+        if data.get("type") == "stored_photo":
+            image_path = data.get("image_path", "")
+            if image_path and os.path.exists(image_path):
+                results.append({
+                    "id": data.get("id") or os.path.splitext(fname)[0],
+                    "filename": data.get("filename") or os.path.basename(image_path),
+                    "saved_at": saved_at,
+                    "source_set_id": None,
+                    "path": image_path,
+                })
+            continue
+        legacy_paths = [path for path in data.get("image_paths", []) if os.path.exists(path)]
+        for index, image_path in enumerate(legacy_paths):
+            results.append({
+                "id": storage_photo_id(data.get("id") or os.path.splitext(fname)[0], image_path, index),
+                "filename": os.path.basename(image_path),
+                "saved_at": saved_at,
+                "source_set_id": data.get("id") or os.path.splitext(fname)[0],
+                "path": image_path,
+            })
+    results.sort(key=lambda item: item.get("saved_at", ""), reverse=True)
+    return results
+
+def public_stored_photo(photo: dict) -> dict:
+    return {
+        "id": photo.get("id"),
+        "filename": photo.get("filename") or "Stored photo",
+        "saved_at": photo.get("saved_at", ""),
+        "source_set_id": photo.get("source_set_id"),
+    }
+
+def stored_photo_by_id(user_id: str, photo_id: str) -> Optional[dict]:
+    for photo in stored_photos_for_user(user_id):
+        if photo.get("id") == photo_id:
+            return photo
+    return None
+
+def storage_paths_for_photo_ids(user_id: str, photo_ids: List[str]) -> List[str]:
+    if not photo_ids:
+        return []
+    allowed = {str(photo_id) for photo_id in photo_ids if photo_id}
+    paths = []
+    seen = set()
+    for photo in stored_photos_for_user(user_id):
+        if photo.get("id") in allowed:
+            path = photo.get("path")
+            if path and path not in seen and os.path.exists(path):
+                paths.append(path)
+                seen.add(path)
+    return paths
+
+def save_stored_photos_to_disk(user_id: str, image_paths: List[str]) -> List[dict]:
+    user_dir = os.path.join(PHOTO_STORAGE_DIR, user_id)
+    os.makedirs(user_dir, exist_ok=True)
+    saved = []
+    for src in image_paths:
+        photo_id = str(uuid.uuid4())
+        img_dir = os.path.join(user_dir, photo_id)
+        saved_paths = copy_images_to_dir([src], img_dir)
+        if not saved_paths:
+            continue
+        image_path = saved_paths[0]
+        payload = {
+            "id": photo_id,
+            "type": "stored_photo",
+            "user_id": user_id,
+            "image_path": image_path,
+            "filename": os.path.basename(image_path),
+            "saved_at": datetime.utcnow().isoformat(),
+        }
+        with open(os.path.join(user_dir, f"{photo_id}.json"), "w") as f:
+            json.dump(payload, f)
+        saved.append(public_stored_photo({**payload, "path": image_path, "source_set_id": None}))
+    return saved
 
 def save_photo_set_to_disk(user_id: str, photo_set_id: str, image_paths: List[str]):
     user_dir = os.path.join(PHOTO_STORAGE_DIR, user_id)
@@ -4720,7 +4900,19 @@ async def list_drafts(userId: str):
 
 @app.get("/api/photo-storage")
 async def list_photo_storage(userId: str):
-    return {"success": True, "photo_sets": photo_sets_for_user(userId)}
+    return {
+        "success": True,
+        "photos": [public_stored_photo(photo) for photo in stored_photos_for_user(userId)],
+        "photo_sets": photo_sets_for_user(userId),
+    }
+
+@app.get("/api/photo-storage/photo/{photo_id}")
+async def get_stored_photo(photo_id: str, userId: str):
+    photo = stored_photo_by_id(userId, photo_id)
+    if not photo or not photo.get("path"):
+        raise HTTPException(status_code=404, detail="Stored photo not found.")
+    media_type, _ = mimetypes.guess_type(photo["path"])
+    return FileResponse(photo["path"], media_type=media_type or "image/jpeg")
 
 @app.get("/api/fill-status")
 async def fill_status(userId: str):
@@ -4793,35 +4985,46 @@ async def upload_photo_storage(userId: str, files: List[UploadFile] = File(...),
             buf.write(content)
         tmp_paths.append(path)
     try:
-        photo_set = save_photo_set_to_disk(userId, str(uuid.uuid4()), tmp_paths)
+        photos = save_stored_photos_to_disk(userId, tmp_paths)
     except Exception as e:
         cleanup_paths(tmp_paths)
         return {"success": False, "error": str(e)}
     cleanup_paths(tmp_paths)
-    return {"success": True, "photo_set": photo_set}
+    return {"success": True, "photos": photos}
 
 @app.post("/api/photo-storage/create-listing")
 async def create_listing_from_photo_storage(request: Request):
     payload = await request.json()
     user_id = payload.get("userId")
+    photo_ids = payload.get("photoIds")
     photo_set_id = payload.get("photoSetId")
-    if not user_id or not photo_set_id:
-        return {"success": False, "error": "Missing stored photo set."}
-    job_key = f"{user_id}:{photo_set_id}"
+    image_paths = []
+    if not user_id:
+        return {"success": False, "error": "Missing user id."}
+    if isinstance(photo_ids, list):
+        photo_ids = [str(photo_id) for photo_id in photo_ids if photo_id]
+        image_paths = storage_paths_for_photo_ids(user_id, photo_ids)
+        job_subject = ",".join(sorted(photo_ids))
+    elif photo_set_id:
+        photo_set = load_photo_set_from_disk(user_id, photo_set_id)
+        image_paths = photo_set.get("image_paths", []) if photo_set else []
+        job_subject = str(photo_set_id)
+    else:
+        return {"success": False, "error": "Select stored photos first."}
+    if not user_id or not image_paths:
+        return {"success": False, "error": "Stored photos not found."}
+    job_key = f"{user_id}:{job_subject}"
     if job_key in storage_analysis_jobs:
         return {"success": False, "error": "AI analysis is already running for those stored photos."}
-    photo_set = load_photo_set_from_disk(user_id, photo_set_id)
-    if not photo_set or not photo_set.get("image_paths"):
-        return {"success": False, "error": "Stored photos not found."}
     storage_analysis_jobs.add(job_key)
     try:
-        details = await analyze_images(photo_set["image_paths"])
+        details = await analyze_images(image_paths)
     except Exception as e:
         return {"success": False, "error": str(e)}
     finally:
         storage_analysis_jobs.discard(job_key)
     draft_id = str(uuid.uuid4())
-    draft = save_draft_to_disk(user_id, draft_id, details, photo_set["image_paths"])
+    draft = save_draft_to_disk(user_id, draft_id, details, image_paths)
     pending_listings[user_id] = {"image_paths": draft["image_paths"], "details": details, "draft_id": draft_id}
     return {"success": True, "details": details, "draft_id": draft_id}
 
