@@ -4247,11 +4247,19 @@ def add_credits(user_id: str, amount: int):
     credits[user_id] += amount
     _save_credits(credits)
 
+def stripe_object_get(obj, key: str, default=None):
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    try:
+        return obj[key]
+    except Exception:
+        return getattr(obj, key, default)
+
 def record_paid_credit(session: dict) -> bool:
-    user_id = session.get("client_reference_id")
+    user_id = stripe_object_get(session, "client_reference_id")
     if not user_id:
         return False
-    session_id = session.get("id")
+    session_id = stripe_object_get(session, "id")
     payments = _load_payments()
     processed = payments.setdefault("processed_checkout_sessions", {})
     if session_id and session_id in processed:
@@ -4260,9 +4268,9 @@ def record_paid_credit(session: dict) -> bool:
     if session_id:
         processed[session_id] = {
             "user_id": user_id,
-            "amount_total": session.get("amount_total"),
-            "currency": session.get("currency"),
-            "payment_status": session.get("payment_status"),
+            "amount_total": stripe_object_get(session, "amount_total"),
+            "currency": stripe_object_get(session, "currency"),
+            "payment_status": stripe_object_get(session, "payment_status"),
             "recorded_at": datetime.utcnow().isoformat() + "Z",
         }
         _save_payments(payments)
@@ -4690,9 +4698,11 @@ async def stripe_webhook(request: Request):
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)}, status_code=400)
     
-    if event['type'] in {'checkout.session.completed', 'checkout.session.async_payment_succeeded'}:
-        session = event['data']['object']
-        if event['type'] == 'checkout.session.completed' and session.get('payment_status') != 'paid':
+    event_type = stripe_object_get(event, "type")
+    if event_type in {'checkout.session.completed', 'checkout.session.async_payment_succeeded'}:
+        event_data = stripe_object_get(event, "data", {})
+        session = stripe_object_get(event_data, "object", {})
+        if event_type == 'checkout.session.completed' and stripe_object_get(session, "payment_status") != 'paid':
             return {"success": True}
         record_paid_credit(session)
             
