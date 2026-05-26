@@ -174,18 +174,57 @@ async def _open_marketplace_picker(page, label: str) -> bool:
         pass
     return False
 
+async def _is_listing_form_textbox(locator) -> bool:
+    try:
+        return await locator.evaluate(
+            """(el) => {
+                const parts = [
+                    el.getAttribute('aria-label'),
+                    el.getAttribute('placeholder'),
+                    el.getAttribute('name'),
+                    el.getAttribute('id'),
+                ];
+                const labelledBy = el.getAttribute('aria-labelledby');
+                if (labelledBy) {
+                    for (const id of labelledBy.split(/\\s+/)) {
+                        const node = document.getElementById(id);
+                        if (node) parts.push(node.textContent || '');
+                    }
+                }
+                if (el.labels) {
+                    for (const label of Array.from(el.labels)) {
+                        parts.push(label.textContent || '');
+                    }
+                }
+                const text = parts.filter(Boolean).join(' ').toLowerCase();
+                return /\\b(title|price|description)\\b/.test(text);
+            }"""
+        )
+    except Exception:
+        return False
+
+
 async def _find_search_input(page):
     candidates = [
-        page.get_by_role("searchbox"),
-        page.get_by_role("textbox"),
+        page.locator('[role="dialog"] [role="searchbox"]'),
+        page.locator('[role="listbox"] [role="searchbox"]'),
+        page.locator('[role="menu"] [role="searchbox"]'),
         page.locator('[role="dialog"] input[type="text"]'),
         page.locator('[role="listbox"] input[type="text"]'),
-        page.locator('input[placeholder*="Search"]'),
+        page.locator('[role="menu"] input[type="text"]'),
+        page.locator('[role="dialog"] [aria-label*="Search" i]'),
+        page.locator('[role="listbox"] [aria-label*="Search" i]'),
+        page.locator('[role="menu"] [aria-label*="Search" i]'),
+        page.locator('[role="dialog"] input[placeholder*="Search" i]'),
+        page.locator('[role="listbox"] input[placeholder*="Search" i]'),
+        page.locator('[role="menu"] input[placeholder*="Search" i]'),
     ]
     for candidate in candidates:
         try:
             target = candidate.first
             if await target.is_visible(timeout=700):
+                if await _is_listing_form_textbox(target):
+                    continue
                 return target
         except Exception:
             continue
@@ -247,6 +286,15 @@ async def _select_marketplace_option(page, label: str, value: str) -> bool:
             except Exception:
                 continue
     return False
+
+
+async def _ensure_field_value(locator, expected: str):
+    try:
+        current = await locator.input_value(timeout=1200)
+        if current != expected:
+            await locator.fill(expected)
+    except Exception:
+        pass
 
 async def reveal_publish_button(cdp_port: int):
     async with async_playwright() as p:
@@ -369,6 +417,7 @@ async def create_facebook_listing(
             condition_selected = await _select_marketplace_option(page, "Condition", condition)
             if not condition_selected:
                 await _report(status_callback, "condition", 82, "Condition selector not found, leaving it for review")
+            await _ensure_field_value(title_field, title)
 
             await _report(status_callback, "description", 92, "Filling description")
             await page.get_by_label("Description", exact=True).fill(description)
