@@ -70,8 +70,6 @@ AUTO_MARKETPLACE_HOSTED_COMPARE_AT_PRICE='$5'
 AUTO_MARKETPLACE_HOSTED_PRICE='$1'
 AUTO_MARKETPLACE_FREE_SIGNUP_LIMIT=25
 AUTO_MARKETPLACE_FREE_POSTS=3
-AUTO_MARKETPLACE_PACKAGE_DOWNLOAD_URL=https://marketplace.mrbtechnologies.com/downloads/auto-lister-self-host.tar.gz
-AUTO_MARKETPLACE_PUBLIC_REPO_URL=https://github.com/mbellew937/auto-lister.git
 AUTO_MARKETPLACE_SUPPORT_EMAIL=support@mrbtechnologies.com
 AUTO_MARKETPLACE_SUPPORT_HELPDESK_URL=https://helpdesk.mrbtechnologies.com
 AUTO_MARKETPLACE_SUPPORT_GITHUB_ISSUES_URL=https://github.com/mbellew937/auto-lister/issues
@@ -171,8 +169,13 @@ Back up the `/data` volume if users rely on saved drafts or browser sessions.
 
 Photo Storage saves photos without creating or analyzing a listing. Open
 `/photo-storage`, pick one or more stored photos from the larger library view,
-and choose Create Post to create a listing draft. Upload to Drafts only saves a
-photos-only draft; it does not open, analyze, or replace the current post.
+and choose Create Post to jump back to the dashboard, where analysis starts on
+the new post screen. Upload to Drafts only saves a photos-only draft; it does
+not open, analyze, or replace the current post.
+
+On desktop, the right panel keeps Facebook Draft separate from the Library page
+for saved drafts and uploads. Drag the divider between the browser and the
+right panel to resize the workspace.
 
 The release includes metadata-stripped demo photos in `examples/demo-photos/`.
 They are safe to use for checking the photo upload and analysis flow, but users

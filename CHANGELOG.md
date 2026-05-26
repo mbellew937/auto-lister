@@ -20,6 +20,12 @@
 - Moved stored photos out of the dashboard panel into a larger `/photo-storage`
   library page with multi-select Create Post, and kept Upload to Drafts
   save-only.
+- Changed Photo Library Create Post to jump back to the dashboard first, then
+  run stored-photo analysis on the new post screen.
+- Split the desktop side panel into Facebook Draft and Library pages, and made
+  the browser/draft divider draggable.
+- Disabled the hosted `/self-host` guide by default for downloaded installs;
+  hosted deployments must opt in with `AUTO_MARKETPLACE_ENABLE_SELF_HOST_PAGE`.
 
 ## 2026.05.16
 

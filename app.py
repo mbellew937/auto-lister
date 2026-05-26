@@ -41,6 +41,13 @@ def is_private_distribution_url(value: str) -> bool:
         return False
 
 
+def env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 # Configuration
 APP_DIR = os.environ.get("AUTO_MARKETPLACE_APP_DIR", os.path.dirname(os.path.abspath(__file__)))
 BASE_DIR = os.environ.get(
@@ -125,6 +132,9 @@ if STRIPE_SECRET_KEY:
 STRIPE_ENABLED = bool(STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET and STRIPE_PRICE_ID)
 
 SELF_HOST_GUIDE_PATH = "/self-host"
+SELF_HOST_GUIDE_ENABLED = env_flag("AUTO_MARKETPLACE_ENABLE_SELF_HOST_PAGE", False)
+SELF_HOST_LINK_ATTR_HTML = "" if SELF_HOST_GUIDE_ENABLED else ' hidden aria-hidden="true"'
+SELF_HOST_SECTION_ATTR_HTML = "" if SELF_HOST_GUIDE_ENABLED else ' hidden aria-hidden="true"'
 PACKAGE_DOWNLOAD_FILENAME = os.environ.get(
     "AUTO_MARKETPLACE_PACKAGE_FILENAME",
     "auto-lister-self-host.tar.gz",
@@ -619,7 +629,7 @@ MARKETING_HTML = ("""
             <a class="brand" href="/"><span class="brand-mark">⚡</span><span>Auto-Lister</span></a>
             <div class="nav-links">
                 <a href="#workflow">Workflow</a>
-                <a href="__SELF_HOST_GUIDE_LINK__" data-track-action="self-host-guide">Self-host</a>
+                <a href="__SELF_HOST_GUIDE_LINK__" data-track-action="self-host-guide"__SELF_HOST_LINK_ATTR__>Self-host</a>
                 <a href="#hosted">Hosted</a>
                 <a href="/support" data-track-action="support-open">Support</a>
                 <a class="nav-cta" href="__HOSTED_LINK__" data-track-action="hosted-open">Try it out</a>
@@ -672,7 +682,7 @@ MARKETING_HTML = ("""
                     <p class="lead">Auto-Lister uses AI to turn your item photos into fully researched Facebook Marketplace drafts. Run it yourself with your own Gemini key, or use our hosted version.</p>
                     <div class="actions">
                         <a class="btn primary" href="__HOSTED_LINK__" data-track-action="hosted-open">Try it out</a>
-                        <a class="btn secondary" href="__SELF_HOST_GUIDE_LINK__" data-track-action="self-host-start">Self-host Setup</a>
+                        <a class="btn secondary" href="__SELF_HOST_GUIDE_LINK__" data-track-action="self-host-start"__SELF_HOST_LINK_ATTR__>Self-host Setup</a>
                     </div>
                     <div class="hero-meta">
                         <span class="meta-item">Docker Compose included</span>
@@ -723,13 +733,13 @@ MARKETING_HTML = ("""
             </div>
         </section>
 
-        <section class="section alt" id="self-host">
+        <section class="section alt" id="self-host"__SELF_HOST_SECTION_ATTR__>
             <div class="container">
                 <div class="section-head">
                     <div class="section-kicker">Deployment</div>
                     <h2>Bring your own server, keys, and customers.</h2>
                     <p class="section-copy">The self-host package ships with Docker, local first-admin setup, environment-based secrets, and optional notes for adding your own Stripe checkout if you want to sell access.</p>
-                    <p class="section-copy" style="margin-top: 24px;"><a class="btn secondary" href="__SELF_HOST_GUIDE_LINK__" data-track-action="self-host-guide">View Setup Guide</a></p>
+                    <p class="section-copy" style="margin-top: 24px;"><a class="btn secondary" href="__SELF_HOST_GUIDE_LINK__" data-track-action="self-host-guide"__SELF_HOST_LINK_ATTR__>View Setup Guide</a></p>
                 </div>
                 <div class="setup-layout">
                     <div class="terminal">
@@ -783,7 +793,11 @@ open https://your-domain.example.com/setup</code></pre>
     </script>
 </body>
 </html>
-""").replace("__SELF_HOST_GUIDE_LINK__", "/self-host").replace("__HOSTED_LINK__", HOSTED_LAUNCH_URL_HTML).replace("__REPO_LINK__", REPO_DOWNLOAD_URL_HTML)
+""").replace("__SELF_HOST_GUIDE_LINK__", "/self-host").replace(
+    "__SELF_HOST_LINK_ATTR__", SELF_HOST_LINK_ATTR_HTML
+).replace(
+    "__SELF_HOST_SECTION_ATTR__", SELF_HOST_SECTION_ATTR_HTML
+).replace("__HOSTED_LINK__", HOSTED_LAUNCH_URL_HTML).replace("__REPO_LINK__", REPO_DOWNLOAD_URL_HTML)
 
 LOGIN_HTML = """
 <!DOCTYPE html>
@@ -1325,7 +1339,7 @@ open https://your-domain-or-ip/setup</pre>
 
             <a class="back" href="/">← Back to Product Page</a>
         </div>
-        <div class="footer">Optional: Override <code>AUTO_MARKETPLACE_PACKAGE_DOWNLOAD_URL</code> or <code>AUTO_MARKETPLACE_PUBLIC_REPO_URL</code> in your environment to update this page.</div>
+        <div class="footer"><a href="/">Auto-Lister</a></div>
     </main>
     <script>
         (function() {
@@ -1514,7 +1528,7 @@ SUPPORT_HTML = ("""
         <nav class="nav">
             <a class="brand" href="/"><span class="brand-mark">AL</span><span>Auto-Lister</span></a>
             <div class="nav-links">
-                <a href="/self-host" data-track-action="self-host-guide">Self-host</a>
+                <a href="/self-host" data-track-action="self-host-guide"__SELF_HOST_LINK_ATTR__>Self-host</a>
                 <a href="/api/auth/login" data-track-action="hosted-open">Try it out</a>
             </div>
         </nav>
@@ -1656,7 +1670,9 @@ SUPPORT_HTML = ("""
     </script>
 </body>
 </html>
-""").replace("__SUPPORT_LINK__", SUPPORT_PRIMARY_URL_HTML).replace(
+""").replace("__SELF_HOST_LINK_ATTR__", SELF_HOST_LINK_ATTR_HTML).replace(
+    "__SUPPORT_LINK__", SUPPORT_PRIMARY_URL_HTML
+).replace(
     "__SUPPORT_MAILTO_LINK__", SUPPORT_MAILTO_URL_HTML
 ).replace("__SUPPORT_EMAIL__", SUPPORT_EMAIL_HTML).replace(
     "__SUPPORT_HELPDESK_LINK__", SUPPORT_HELPDESK_URL_HTML
@@ -2549,12 +2565,15 @@ DASHBOARD_HTML = """
         .d-layout { display: none; }
         @media(min-width:1024px){
             .d-layout {
-                display: grid; grid-template-columns: 1fr 380px;
-                gap: 1.25rem; padding: 1.25rem;
+                --d-panel-width: 380px;
+                display: grid; grid-template-columns: minmax(480px, 1fr) 12px minmax(320px, var(--d-panel-width));
+                gap: 0.75rem; padding: 1.25rem;
                 height: calc(var(--app-vh, 100dvh) - 56px);
                 min-height: 0;
             }
         }
+        body.d-resizing, body.d-resizing * { cursor: col-resize !important; user-select: none; }
+        body.d-resizing .browser-frame { pointer-events: none; }
         .d-browser-card {
             background: var(--surface); border: 1px solid var(--border);
             border-radius: var(--radius-lg); overflow: hidden; display: flex; flex-direction: column; min-height: 0;
@@ -2566,12 +2585,78 @@ DASHBOARD_HTML = """
         .d-browser-dot { width: 10px; height: 10px; border-radius: 50%; }
         .browser-frame { flex: 1; min-height: 0; height: 100%; border: none; background: #000; width: 100%; }
 
+        .d-splitter {
+            border: 0;
+            border-radius: 8px;
+            background: transparent;
+            cursor: col-resize;
+            position: relative;
+            min-height: 0;
+            padding: 0;
+        }
+        .d-splitter::before {
+            content: '';
+            position: absolute;
+            top: 0.5rem;
+            bottom: 0.5rem;
+            left: 50%;
+            width: 4px;
+            transform: translateX(-50%);
+            border-radius: 99px;
+            background: rgba(148,163,184,0.24);
+            transition: background 0.15s, width 0.15s;
+        }
+        .d-splitter:hover::before,
+        .d-splitter:focus-visible::before,
+        body.d-resizing .d-splitter::before {
+            width: 6px;
+            background: rgba(96,165,250,0.65);
+        }
+        .d-splitter:focus-visible { outline: 2px solid rgba(96,165,250,0.55); outline-offset: 2px; }
+
         .d-panel {
             background: var(--surface); border: 1px solid var(--border);
             border-radius: var(--radius-lg); display: flex; flex-direction: column;
             overflow: hidden;
         }
+        .d-panel-tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            padding: 0.75rem 0.75rem 0;
+            flex-shrink: 0;
+        }
+        .d-panel-tab {
+            border: 1px solid var(--border2);
+            border-radius: 10px;
+            min-height: 38px;
+            padding: 0 0.6rem;
+            background: rgba(22,32,50,0.78);
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .d-panel-tab.active {
+            background: #f8fafc;
+            border-color: #f8fafc;
+            color: #0f172a;
+        }
         .d-panel-inner { padding: 1.25rem; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; }
+        .d-panel-page { display: none; flex-direction: column; gap: 1rem; }
+        .d-panel-page.active { display: flex; }
+        .d-empty-state {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: rgba(8,13,20,0.25);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .d-empty-title { font-size: 1rem; color: var(--text); font-weight: 800; }
+        .d-empty-copy { font-size: 0.84rem; color: var(--muted); line-height: 1.45; }
         .d-section-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
 
         .d-draft-item {
@@ -3054,9 +3139,43 @@ DASHBOARD_HTML = """
         <iframe id=\"vnc-iframe\" src=\"\" class=\"browser-frame\"></iframe>
     </div>
 
+    <button id=\"dSplitter\" class=\"d-splitter\" type=\"button\" aria-label=\"Resize panels\"></button>
+
     <!-- Right: control panel -->
     <div class=\"d-panel\">
+        <div class=\"d-panel-tabs\" role=\"tablist\" aria-label=\"Desktop panel\">
+            <button id=\"dTabPost\" class=\"d-panel-tab active\" type=\"button\" role=\"tab\" aria-selected=\"true\" onclick=\"showDesktopPanel('post')\">Facebook Draft</button>
+            <button id=\"dTabLibrary\" class=\"d-panel-tab\" type=\"button\" role=\"tab\" aria-selected=\"false\" onclick=\"showDesktopPanel('library')\">Library</button>
+        </div>
         <div class=\"d-panel-inner\" id=\"dPanelInner\">
+            <div id=\"dPostPage\" class=\"d-panel-page active\">
+                <div id=\"dPostEmpty\" class=\"d-empty-state\">
+                    <div class=\"d-section-title\">Facebook Draft</div>
+                    <div class=\"d-empty-title\">No active draft</div>
+                    <button class=\"btn-d slate\" type=\"button\" onclick=\"showDesktopPanel('library')\">Open Library</button>
+                </div>
+
+                <!-- Status -->
+                <div id=\"dStatus\" class=\"d-status\" style=\"display:none;\"></div>
+                <div id=\"dFillStatus\" class=\"fill-card\" style=\"display:none;\"></div>
+
+                <!-- Results -->
+                <div id=\"dResults\" style=\"display:none; flex-direction:column; gap:0.875rem;\">
+                    <div class=\"divider\"></div>
+                    <div id=\"dResultBlock\" class=\"d-result-block\"></div>
+                    <div>
+                        <div class=\"d-section-title\" style=\"margin-bottom:0.5rem;\">Correction</div>
+                        <textarea id=\"correctionBox\" placeholder=\"e.g. This is not the 4 ft barrel kit.\" style=\"min-height:70px;\"></textarea>
+                    </div>
+                    <div class=\"btn-d-row\">
+                        <button class=\"btn-d slate\" onclick=\"desktopRefine()\">Re-analyze</button>
+                        <button id=\"dPostBtn\" class=\"btn-d green\" onclick=\"desktopDraft()\">Post to Facebook</button>
+                    </div>
+                    <button class=\"btn-d slate\" onclick=\"desktopRevealPublish()\">Reveal Publish Button</button>
+                </div>
+            </div>
+
+            <div id=\"dLibraryPage\" class=\"d-panel-page\">
 
             <!-- Drafts section -->
             <div id=\"dDraftsSection\" style=\"display:none;\">
@@ -3104,23 +3223,6 @@ DASHBOARD_HTML = """
                 </label>
             </div>
 
-            <!-- Status -->
-            <div id=\"dStatus\" class=\"d-status\" style=\"display:none;\"></div>
-            <div id=\"dFillStatus\" class=\"fill-card\" style=\"display:none;\"></div>
-
-            <!-- Results -->
-            <div id=\"dResults\" style=\"display:none; flex-direction:column; gap:0.875rem;\">
-                <div class=\"divider\"></div>
-                <div id=\"dResultBlock\" class=\"d-result-block\"></div>
-                <div>
-                    <div class=\"d-section-title\" style=\"margin-bottom:0.5rem;\">Correction</div>
-                    <textarea id=\"correctionBox\" placeholder=\"e.g. This is not the 4 ft barrel kit.\" style=\"min-height:70px;\"></textarea>
-                </div>
-                <div class=\"btn-d-row\">
-                    <button class=\"btn-d slate\" onclick=\"desktopRefine()\">Re-analyze</button>
-                    <button id=\"dPostBtn\" class=\"btn-d green\" onclick=\"desktopDraft()\">Post to Facebook</button>
-                </div>
-                <button class=\"btn-d slate\" onclick=\"desktopRevealPublish()\">Reveal Publish Button</button>
             </div>
 
         </div>
@@ -3202,6 +3304,8 @@ let mobileAnalyzeInFlight = false;
 let storageCreateInFlight = false;
 const isMobile = window.innerWidth < 1024;
 const device = isMobile ? 'mobile' : 'desktop';
+const STORAGE_CREATE_HANDOFF_KEY = 'autoListerStorageCreatePhotoIds';
+const DESKTOP_PANEL_WIDTH_KEY = 'autoListerDesktopPanelWidth';
 
 function trackAppAction(action, name='', value) {
     if (window.trackAutoListerEvent) window.trackAutoListerEvent('app', action, name || device, value);
@@ -3266,19 +3370,147 @@ async function init() {
         document.getElementById('user-email').innerText = user.email;
         loadCredits(userId);
         if (!isMobile) {
+            initDesktopSplitter();
+            showDesktopPanel('post');
             document.getElementById('vnc-iframe').src =
                 `/embedded-vnc?path=${encodeURIComponent(`vnc/${userId}/${device}`)}`;
         }
         await loadDraftsList();
         await loadPhotoStorageList();
-        const resumeDraftId = new URLSearchParams(window.location.search).get('draftId');
-        if (resumeDraftId) {
+        const params = new URLSearchParams(window.location.search);
+        const resumeDraftId = params.get('draftId');
+        const storageCreateRequested = params.get('storageCreate') === '1';
+        if (resumeDraftId || storageCreateRequested) {
             window.history.replaceState({}, '', '/dashboard');
+        }
+        if (storageCreateRequested) {
+            const photoIds = readStorageCreateHandoff(params);
+            if (photoIds.length) {
+                selectedStoragePhotoIds.clear();
+                photoIds.forEach(id => selectedStoragePhotoIds.add(id));
+                await createListingFromStorage();
+            } else if (isMobile) {
+                showStep('mStep1');
+                setStorageStatus('Stored photo selection expired. Open Photo Library and pick photos again.', 'err');
+            } else {
+                setDStatus('Stored photo selection expired. Open Photo Library and pick photos again.', 'err');
+            }
+        } else if (resumeDraftId) {
             await resumeDraft(resumeDraftId);
         }
         scheduleSharedStateRefresh();
-        tutMaybeShow();
+        if (!storageCreateRequested) tutMaybeShow();
     } catch(e) { window.location.href = '/login'; }
+}
+
+function applyDesktopPanelWidth(width) {
+    const layout = document.getElementById('desktopLayout');
+    if (!layout) return null;
+    const available = layout.clientWidth || window.innerWidth || 0;
+    const max = Math.max(320, Math.min(760, available - 520));
+    const clamped = Math.max(320, Math.min(max, Number(width) || 380));
+    layout.style.setProperty('--d-panel-width', `${clamped}px`);
+    return clamped;
+}
+
+function initDesktopSplitter() {
+    const splitter = document.getElementById('dSplitter');
+    const layout = document.getElementById('desktopLayout');
+    if (!splitter || !layout || splitter.dataset.ready === '1') return;
+    splitter.dataset.ready = '1';
+    try {
+        const saved = Number(localStorage.getItem(DESKTOP_PANEL_WIDTH_KEY));
+        if (saved) applyDesktopPanelWidth(saved);
+    } catch(e) {}
+
+    const updateFromPointer = clientX => {
+        const rect = layout.getBoundingClientRect();
+        const width = rect.right - clientX - 12;
+        const clamped = applyDesktopPanelWidth(width);
+        try { if (clamped) localStorage.setItem(DESKTOP_PANEL_WIDTH_KEY, String(Math.round(clamped))); } catch(e) {}
+    };
+
+    const stopResize = () => {
+        document.body.classList.remove('d-resizing');
+        window.removeEventListener('pointermove', moveResize);
+        window.removeEventListener('pointerup', stopResize);
+        window.removeEventListener('pointercancel', stopResize);
+    };
+    const moveResize = event => updateFromPointer(event.clientX);
+
+    splitter.addEventListener('pointerdown', event => {
+        event.preventDefault();
+        document.body.classList.add('d-resizing');
+        updateFromPointer(event.clientX);
+        window.addEventListener('pointermove', moveResize);
+        window.addEventListener('pointerup', stopResize);
+        window.addEventListener('pointercancel', stopResize);
+    });
+
+    splitter.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const current = parseFloat(getComputedStyle(layout).getPropertyValue('--d-panel-width')) || 380;
+        const delta = event.shiftKey ? 80 : 32;
+        const next = current + (event.key === 'ArrowLeft' ? delta : -delta);
+        const clamped = applyDesktopPanelWidth(next);
+        try { if (clamped) localStorage.setItem(DESKTOP_PANEL_WIDTH_KEY, String(Math.round(clamped))); } catch(e) {}
+    });
+
+    window.addEventListener('resize', () => {
+        const current = parseFloat(getComputedStyle(layout).getPropertyValue('--d-panel-width')) || 380;
+        applyDesktopPanelWidth(current);
+    }, { passive: true });
+}
+
+function showDesktopPanel(page) {
+    if (isMobile) return;
+    const postActive = page !== 'library';
+    const postPage = document.getElementById('dPostPage');
+    const libraryPage = document.getElementById('dLibraryPage');
+    const postTab = document.getElementById('dTabPost');
+    const libraryTab = document.getElementById('dTabLibrary');
+    if (postPage) postPage.classList.toggle('active', postActive);
+    if (libraryPage) libraryPage.classList.toggle('active', !postActive);
+    if (postTab) {
+        postTab.classList.toggle('active', postActive);
+        postTab.setAttribute('aria-selected', postActive ? 'true' : 'false');
+    }
+    if (libraryTab) {
+        libraryTab.classList.toggle('active', !postActive);
+        libraryTab.setAttribute('aria-selected', !postActive ? 'true' : 'false');
+    }
+    updateDesktopPostEmpty();
+}
+
+function updateDesktopPostEmpty() {
+    if (isMobile) return;
+    const empty = document.getElementById('dPostEmpty');
+    if (!empty) return;
+    const status = document.getElementById('dStatus');
+    const fill = document.getElementById('dFillStatus');
+    const results = document.getElementById('dResults');
+    const hasStatus = status && status.style.display !== 'none' && status.textContent.trim();
+    const hasFill = fill && fill.style.display !== 'none';
+    const hasResults = results && results.style.display !== 'none';
+    empty.style.display = (!hasStatus && !hasFill && !hasResults && !hasAnalysis) ? 'flex' : 'none';
+}
+
+function readStorageCreateHandoff(params) {
+    let ids = [];
+    try {
+        const raw = sessionStorage.getItem(STORAGE_CREATE_HANDOFF_KEY);
+        sessionStorage.removeItem(STORAGE_CREATE_HANDOFF_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) ids = parsed;
+    } catch(e) {}
+    if (!ids.length && params.get('photoIds')) {
+        ids = params.get('photoIds').split(',').map(decodeURIComponent);
+    }
+    const available = new Set(Object.keys(storagePhotoMap));
+    return ids
+        .map(id => String(id || '').trim())
+        .filter(id => id && available.has(id));
 }
 
 async function signOut() {
@@ -3406,8 +3638,10 @@ async function resumeDraft(draftId) {
             setMStatus('Loading draft…');
             document.getElementById('mResults').style.display = 'none';
         } else {
+            showDesktopPanel('post');
             setDStatus('Loading draft…');
             document.getElementById('dResults').style.display = 'none';
+            updateDesktopPostEmpty();
         }
         const res = await fetch('/api/resume', {
             method:'POST', headers:{'Content-Type':'application/json'},
@@ -3447,6 +3681,7 @@ async function deleteDraft(draftId) {
             const mResults = document.getElementById('mResults');
             if (dResults) dResults.style.display = 'none';
             if (mResults) mResults.style.display = 'none';
+            updateDesktopPostEmpty();
         }
         await loadDraftsList();
         if (isMobile) setMStatus('Draft deleted.', 'ok');
@@ -3558,10 +3793,13 @@ function showFillStatus(data) {
     if (!el) return;
     if (!data || !data.state || data.state === 'idle') {
         el.style.display = 'none';
+        updateDesktopPostEmpty();
         return;
     }
+    if (!isMobile) showDesktopPanel('post');
     el.innerHTML = buildFillStatusHtml(data);
     el.style.display = 'flex';
+    updateDesktopPostEmpty();
 }
 
 async function pollFillStatus() {
@@ -3855,17 +4093,25 @@ function mobileReset() {
 // ══ DESKTOP ══
 function setDStatus(msg, type='') {
     const el = document.getElementById('dStatus');
-    if (!msg) { el.style.display='none'; return; }
+    if (!msg) {
+        el.style.display='none';
+        updateDesktopPostEmpty();
+        return;
+    }
     el.className = 'd-status ' + type;
     el.textContent = msg;
     el.style.display = 'block';
+    updateDesktopPostEmpty();
 }
 
 function desktopFileChange(files) {
     const prev = document.getElementById('dPreviews');
     prev.innerHTML = '';
     document.getElementById('dResults').style.display = 'none';
+    hasAnalysis = false;
+    currentDraftId = null;
     setDStatus('');
+    updateDesktopPostEmpty();
     if (files.length) {
         trackAppAction('photos-selected', 'desktop', files.length);
         for (const f of files) {
@@ -3878,6 +4124,7 @@ function desktopFileChange(files) {
 }
 
 function renderDesktopResults(d) {
+    showDesktopPanel('post');
     const conf = Number.isFinite(Number(d.confidence)) ? Number(d.confidence) : null;
     const cc = confColor(conf);
     document.getElementById('dResultBlock').innerHTML = `
@@ -3901,12 +4148,14 @@ function renderDesktopResults(d) {
     `;
     document.getElementById('dResults').style.display = 'flex';
     hasAnalysis = true;
+    updateDesktopPostEmpty();
 }
 
 async function desktopAnalyze() {
     const files = document.getElementById('fileInput').files;
     if (!files.length) return;
     trackAppAction('analyze-start', 'desktop', files.length);
+    showDesktopPanel('post');
     setDStatus('Analyzing with AI…');
     document.getElementById('dAnalyzeBtn').disabled = true;
     const fd = new FormData();
@@ -3937,8 +4186,10 @@ async function createListingFromStorage() {
         document.getElementById('mPostStatus').style.display = 'none';
         document.getElementById('mFillStatus').style.display = 'none';
     } else {
+        showDesktopPanel('post');
         setDStatus('Analyzing selected stored photos…');
         document.getElementById('dResults').style.display = 'none';
+        updateDesktopPostEmpty();
     }
     try {
         const res = await fetch('/api/photo-storage/create-listing', {
@@ -3981,6 +4232,7 @@ async function desktopRefine() {
     const correction = document.getElementById('correctionBox').value.trim();
     if (!correction) { setDStatus('Add a correction first.'); return; }
     trackAppAction('refine-start', 'desktop');
+    showDesktopPanel('post');
     setDStatus('Re-running with correction…');
     try {
         const res = await fetch('/api/refine', {
@@ -3998,6 +4250,7 @@ async function desktopDraft() {
     trackAppAction('facebook-fill-start', 'desktop');
     const btn = document.getElementById('dPostBtn');
     if (btn) btn.disabled = true;
+    showDesktopPanel('post');
     setDStatus('Posting to Facebook…');
     try {
         const res = await fetch('/api/create-draft', {
@@ -4026,6 +4279,7 @@ async function desktopDraft() {
 
 async function desktopRevealPublish() {
     trackAppAction('publish-reveal-start', 'desktop');
+    showDesktopPanel('post');
     setDStatus('Scrolling the Facebook session to the Publish button…');
     try {
         const res = await fetch('/api/reveal-publish', {
@@ -4475,27 +4729,14 @@ PHOTO_STORAGE_HTML = """
             if (!photoIds.length || createInFlight) return;
             createInFlight = true;
             updateSelectedCount();
-            setStatus('Analyzing selected photos...');
-            trackLibraryAction('create-start', '', photoIds.length);
+            setStatus('Opening new post...');
+            trackLibraryAction('create-handoff', '', photoIds.length);
             try {
-                const result = await fetch('/api/photo-storage/create-listing', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({userId, photoIds}),
-                }).then(r => r.json());
-                if (!result.success) {
-                    setStatus(result.error || 'Could not create post.', 'err');
-                    trackLibraryAction('create-error');
-                    return;
-                }
-                trackLibraryAction('create-success', '', photoIds.length);
-                window.location.href = `/dashboard?draftId=${encodeURIComponent(result.draft_id)}`;
+                sessionStorage.setItem('autoListerStorageCreatePhotoIds', JSON.stringify(photoIds));
+                window.location.href = '/dashboard?storageCreate=1';
             } catch (e) {
-                setStatus('Network error. Try again.', 'err');
-                trackLibraryAction('create-error');
-            } finally {
-                createInFlight = false;
-                updateSelectedCount();
+                const fallbackIds = photoIds.map(encodeURIComponent).join(',');
+                window.location.href = `/dashboard?storageCreate=1&photoIds=${fallbackIds}`;
             }
         }
         init();
@@ -5208,6 +5449,8 @@ async def login_page():
 
 @app.get("/self-host")
 async def self_host_guide_page():
+    if not SELF_HOST_GUIDE_ENABLED:
+        raise HTTPException(status_code=404, detail="Not found")
     return tracked_html_response(SELF_HOST_GUIDE_HTML)
 
 @app.get("/support")
