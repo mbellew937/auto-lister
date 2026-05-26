@@ -9,6 +9,7 @@ import hmac
 import secrets
 import mimetypes
 import ipaddress
+import time
 from html import escape
 from urllib.parse import quote_plus, urlparse, urlencode
 from typing import Dict, List, Optional
@@ -18,6 +19,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketState
 from google import genai
 from google.genai import types
+from google.auth.transport.requests import Request as GoogleAuthRequest
+from google.oauth2 import service_account
 import websockets
 import requests
 
@@ -58,6 +61,9 @@ OIDC_PROVIDER_LABEL = os.environ.get("OIDC_PROVIDER_LABEL", "Sign in").strip() o
 OIDC_PROVIDER_LABEL_JS = json.dumps(OIDC_PROVIDER_LABEL)
 OIDC_PENDING_COOKIE = "auto_lister_oidc"
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_USE_VERTEX = os.environ.get("GEMINI_USE_VERTEX", "").strip().lower() in {"1", "true", "yes", "on"} or os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").strip().lower() in {"1", "true", "yes", "on"}
+VERTEX_AI_PROJECT = (os.environ.get("VERTEX_AI_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT") or "").strip()
+VERTEX_AI_LOCATION = (os.environ.get("VERTEX_AI_LOCATION") or os.environ.get("GOOGLE_CLOUD_LOCATION") or "global").strip() or "global"
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
 OPENAI_CHAT_COMPLETIONS_URL = os.environ.get(
@@ -83,6 +89,18 @@ SUPPORT_MAILTO_URL = (
     f"&body={quote_plus(SUPPORT_MAILTO_BODY)}"
 )
 SUPPORT_URL = os.environ.get("AUTO_MARKETPLACE_SUPPORT_URL", SUPPORT_MAILTO_URL).strip() or SUPPORT_MAILTO_URL
+ZAMMAD_BASE_URL = os.environ.get("AUTO_MARKETPLACE_ZAMMAD_URL", SUPPORT_HELPDESK_URL).strip().rstrip("/")
+ZAMMAD_API_TOKEN = (
+    os.environ.get("AUTO_MARKETPLACE_ZAMMAD_API_TOKEN")
+    or os.environ.get("ZAMMAD_API_TOKEN")
+    or ""
+).strip()
+ZAMMAD_GROUP = os.environ.get("AUTO_MARKETPLACE_ZAMMAD_GROUP", "MRB Technologies").strip() or "MRB Technologies"
+SUPPORT_TICKET_FORM_ENABLED = bool(ZAMMAD_BASE_URL and ZAMMAD_API_TOKEN)
+SUPPORT_PRIMARY_URL = "#helpdesk-request" if SUPPORT_TICKET_FORM_ENABLED else SUPPORT_URL
+SUPPORT_HELPDESK_LINK_URL = "/support#helpdesk-request" if SUPPORT_TICKET_FORM_ENABLED else SUPPORT_HELPDESK_URL
+SUPPORT_HELPDESK_LINK_LABEL = "Open Guest Form" if SUPPORT_TICKET_FORM_ENABLED else "Open Helpdesk"
+SUPPORT_HELPDESK_LINK_TARGET_ATTR = "" if SUPPORT_TICKET_FORM_ENABLED else ' target="_blank" rel="noopener noreferrer"'
 
 
 def parse_nonnegative_int(value: str, default: int) -> int:
@@ -173,10 +191,14 @@ VENMO_QR_HTML = escape(VENMO_LINK_QR, quote=True)
 SUPPORT_EMAIL_HTML = escape(SUPPORT_EMAIL)
 SUPPORT_MAILTO_URL_HTML = escape(SUPPORT_MAILTO_URL, quote=True)
 SUPPORT_URL_HTML = escape(SUPPORT_URL, quote=True)
-SUPPORT_HELPDESK_URL_HTML = escape(SUPPORT_HELPDESK_URL, quote=True)
+SUPPORT_PRIMARY_URL_HTML = escape(SUPPORT_PRIMARY_URL, quote=True)
+SUPPORT_HELPDESK_URL_HTML = escape(SUPPORT_HELPDESK_LINK_URL, quote=True)
+SUPPORT_HELPDESK_LINK_LABEL_HTML = escape(SUPPORT_HELPDESK_LINK_LABEL)
+SUPPORT_HELPDESK_LINK_TARGET_ATTR_HTML = SUPPORT_HELPDESK_LINK_TARGET_ATTR
 SUPPORT_GITHUB_ISSUES_URL_HTML = escape(SUPPORT_GITHUB_ISSUES_URL, quote=True)
-SUPPORT_HELPDESK_BLOCK_ATTR_HTML = "" if SUPPORT_HELPDESK_URL else ' style="display:none;"'
+SUPPORT_HELPDESK_BLOCK_ATTR_HTML = "" if SUPPORT_HELPDESK_LINK_URL else ' style="display:none;"'
 SUPPORT_GITHUB_ISSUES_BLOCK_ATTR_HTML = "" if SUPPORT_GITHUB_ISSUES_URL else ' style="display:none;"'
+SUPPORT_TICKET_FORM_BLOCK_ATTR_HTML = "" if SUPPORT_TICKET_FORM_ENABLED else ' style="display:none;"'
 CREDIT_HTML = (
     f'<div class="credit">Built by '
     f'<a href="{escape(CREDIT_URL, quote=True)}" target="_blank" rel="noopener noreferrer">'
@@ -260,13 +282,17 @@ session_manager = SessionManager(APP_DIR, data_dir=BASE_DIR, novnc_dir=NOVNC_DIR
 pending_listings: Dict[str, dict] = {}
 fill_jobs: Dict[str, dict] = {}
 storage_analysis_jobs = set()
+support_ticket_rate_log: Dict[str, List[float]] = {}
 
 # Google AI Client
-try:
-    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-except Exception as e:
-    print(f"Warning: Gemini Init failed: {e}")
+if GEMINI_USE_VERTEX:
     client = None
+else:
+    try:
+        client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+    except Exception as e:
+        print(f"Warning: Gemini Init failed: {e}")
+        client = None
 
 # UI Templates (Inline for simplicity)
 MARKETING_HTML = ("""
@@ -1264,7 +1290,7 @@ open https://your-domain-or-ip/setup</pre>
                     <div class="support-block"__SUPPORT_HELPDESK_BLOCK_ATTR__>
                         <h3>Helpdesk</h3>
                         <p>Use the helpdesk for hosted account, billing, and production support requests.</p>
-                        <a href="__SUPPORT_HELPDESK_LINK__" class="support-btn" data-track-action="support-helpdesk" target="_blank" rel="noopener noreferrer">Open Helpdesk</a>
+                        <a href="__SUPPORT_HELPDESK_LINK__" class="support-btn" data-track-action="support-helpdesk"__SUPPORT_HELPDESK_TARGET_ATTR__>__SUPPORT_HELPDESK_LABEL__</a>
                     </div>
                     <div class="support-block"__SUPPORT_GITHUB_ISSUES_BLOCK_ATTR__>
                         <h3>GitHub Issues</h3>
@@ -1338,6 +1364,8 @@ open https://your-domain-or-ip/setup</pre>
 ).replace("__SUPPORT_EMAIL__", SUPPORT_EMAIL_HTML).replace(
     "__SUPPORT_HELPDESK_LINK__", SUPPORT_HELPDESK_URL_HTML
 ).replace("__SUPPORT_HELPDESK_BLOCK_ATTR__", SUPPORT_HELPDESK_BLOCK_ATTR_HTML).replace(
+    "__SUPPORT_HELPDESK_LABEL__", SUPPORT_HELPDESK_LINK_LABEL_HTML
+).replace("__SUPPORT_HELPDESK_TARGET_ATTR__", SUPPORT_HELPDESK_LINK_TARGET_ATTR_HTML).replace(
     "__SUPPORT_GITHUB_ISSUES_LINK__", SUPPORT_GITHUB_ISSUES_URL_HTML
 ).replace("__SUPPORT_GITHUB_ISSUES_BLOCK_ATTR__", SUPPORT_GITHUB_ISSUES_BLOCK_ATTR_HTML)
 
@@ -1410,6 +1438,58 @@ SUPPORT_HTML = ("""
         .method p { color: #94a3b8; line-height: 1.55; font-size: 0.95rem; }
         .method a { color: #bfdbfe; text-decoration: none; font-weight: 800; margin-top: auto; overflow-wrap: anywhere; }
         .method a:hover { color: #f8fafc; }
+        .ticket-panel {
+            border: 1px solid rgba(96,165,250,0.24);
+            background: #0f172a;
+            border-radius: 12px;
+            padding: 26px;
+            margin: 34px 0;
+        }
+        .ticket-panel h2 { color: #f8fafc; font-size: 1.35rem; margin-bottom: 10px; }
+        .ticket-panel p { color: #94a3b8; line-height: 1.6; max-width: 720px; }
+        .ticket-form {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+            margin-top: 22px;
+        }
+        .ticket-form label {
+            display: grid;
+            gap: 8px;
+            color: #cbd5e1;
+            font-weight: 800;
+            font-size: 0.86rem;
+        }
+        .ticket-form input,
+        .ticket-form select,
+        .ticket-form textarea {
+            width: 100%;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px;
+            background: #080d14;
+            color: #f8fafc;
+            min-height: 46px;
+            padding: 0 13px;
+            font: inherit;
+        }
+        .ticket-form textarea { min-height: 150px; padding: 12px 13px; resize: vertical; }
+        .ticket-form .wide { grid-column: 1 / -1; }
+        .ticket-form button {
+            justify-self: start;
+            border: 1px solid #f8fafc;
+            border-radius: 10px;
+            background: #f8fafc;
+            color: #0f172a;
+            min-height: 48px;
+            padding: 0 20px;
+            font: inherit;
+            font-weight: 900;
+            cursor: pointer;
+        }
+        .ticket-form button:disabled { opacity: 0.58; cursor: default; }
+        .ticket-status { color: #94a3b8; font-weight: 700; min-height: 22px; align-self: center; }
+        .ticket-status.ok { color: #86efac; }
+        .ticket-status.err { color: #fca5a5; }
         .details {
             border-top: 1px solid rgba(255,255,255,0.08);
             padding-top: 28px; color: #94a3b8; line-height: 1.65;
@@ -1425,6 +1505,7 @@ SUPPORT_HTML = ("""
             main { padding: 38px 0; }
             .actions { flex-direction: column; }
             .btn { width: 100%; }
+            .ticket-form { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -1458,13 +1539,49 @@ SUPPORT_HTML = ("""
             <article class="method"__SUPPORT_HELPDESK_BLOCK_ATTR__>
                 <h2>Helpdesk</h2>
                 <p>Best for hosted app access, billing questions, and production incidents.</p>
-                <a href="__SUPPORT_HELPDESK_LINK__" data-track-action="support-helpdesk" target="_blank" rel="noopener noreferrer">Open Helpdesk</a>
+                <a href="__SUPPORT_HELPDESK_LINK__" data-track-action="support-helpdesk"__SUPPORT_HELPDESK_TARGET_ATTR__>__SUPPORT_HELPDESK_LABEL__</a>
             </article>
             <article class="method"__SUPPORT_GITHUB_ISSUES_BLOCK_ATTR__>
                 <h2>GitHub Issues</h2>
                 <p>Best for self-host bugs, installation problems, and reproducible defects.</p>
                 <a href="__SUPPORT_GITHUB_ISSUES_LINK__" data-track-action="support-github" target="_blank" rel="noopener noreferrer">Open Issues</a>
             </article>
+        </section>
+
+        <section id="helpdesk-request" class="ticket-panel"__SUPPORT_TICKET_FORM_BLOCK_ATTR__>
+            <h2>Guest Helpdesk Request</h2>
+            <p>Send a support request without creating a helpdesk account. Replies go to the email address you enter.</p>
+            <form id="supportTicketForm" class="ticket-form">
+                <input type="text" name="companyWebsite" autocomplete="off" tabindex="-1" style="display:none">
+                <label>Name
+                    <input name="name" autocomplete="name" maxlength="120">
+                </label>
+                <label>Email
+                    <input name="email" type="email" autocomplete="email" maxlength="180" required>
+                </label>
+                <label>Category
+                    <select name="category" required>
+                        <option value="hosted_account">Hosted account or login</option>
+                        <option value="billing">Billing or credits</option>
+                        <option value="ai_analysis">AI analysis</option>
+                        <option value="browser_facebook">Browser session or Facebook fill</option>
+                        <option value="self_host">Self-host install</option>
+                        <option value="bug">Bug or broken feature</option>
+                        <option value="other">Other</option>
+                    </select>
+                </label>
+                <label>Page or action
+                    <input name="page" maxlength="240" placeholder="Dashboard, photo upload, publish, install, etc.">
+                </label>
+                <label class="wide">Subject
+                    <input name="subject" maxlength="160" required>
+                </label>
+                <label class="wide">Details
+                    <textarea name="message" maxlength="4000" required></textarea>
+                </label>
+                <button type="submit">Submit Request</button>
+                <div id="supportTicketStatus" class="ticket-status" role="status" aria-live="polite"></div>
+            </form>
         </section>
 
         <section class="details">
@@ -1497,18 +1614,59 @@ SUPPORT_HTML = ("""
                         if (action) trackSupportAction(action);
                     });
                 });
+                var form = document.getElementById("supportTicketForm");
+                var status = document.getElementById("supportTicketStatus");
+                if (form && status) {
+                    form.addEventListener("submit", async function(event) {
+                        event.preventDefault();
+                        var button = form.querySelector("button[type=submit]");
+                        var payload = Object.fromEntries(new FormData(form).entries());
+                        status.className = "ticket-status";
+                        status.textContent = "Submitting...";
+                        if (button) button.disabled = true;
+                        trackSupportAction("support-ticket-submit");
+                        try {
+                            var response = await fetch("/api/support/ticket", {
+                                method: "POST",
+                                headers: {"Content-Type": "application/json"},
+                                body: JSON.stringify(payload)
+                            });
+                            var result = await response.json();
+                            if (!result.success) {
+                                status.className = "ticket-status err";
+                                status.textContent = result.error || "Unable to submit the request.";
+                                trackSupportAction("support-ticket-error");
+                            } else {
+                                status.className = "ticket-status ok";
+                                status.textContent = result.message || "Request submitted.";
+                                form.reset();
+                                trackSupportAction("support-ticket-success");
+                            }
+                        } catch (e) {
+                            status.className = "ticket-status err";
+                            status.textContent = "Network error. Email support if this keeps happening.";
+                            trackSupportAction("support-ticket-error");
+                        } finally {
+                            if (button) button.disabled = false;
+                        }
+                    });
+                }
             });
         })();
     </script>
 </body>
 </html>
-""").replace("__SUPPORT_LINK__", SUPPORT_URL_HTML).replace(
+""").replace("__SUPPORT_LINK__", SUPPORT_PRIMARY_URL_HTML).replace(
     "__SUPPORT_MAILTO_LINK__", SUPPORT_MAILTO_URL_HTML
 ).replace("__SUPPORT_EMAIL__", SUPPORT_EMAIL_HTML).replace(
     "__SUPPORT_HELPDESK_LINK__", SUPPORT_HELPDESK_URL_HTML
 ).replace("__SUPPORT_HELPDESK_BLOCK_ATTR__", SUPPORT_HELPDESK_BLOCK_ATTR_HTML).replace(
+    "__SUPPORT_HELPDESK_LABEL__", SUPPORT_HELPDESK_LINK_LABEL_HTML
+).replace("__SUPPORT_HELPDESK_TARGET_ATTR__", SUPPORT_HELPDESK_LINK_TARGET_ATTR_HTML).replace(
     "__SUPPORT_GITHUB_ISSUES_LINK__", SUPPORT_GITHUB_ISSUES_URL_HTML
-).replace("__SUPPORT_GITHUB_ISSUES_BLOCK_ATTR__", SUPPORT_GITHUB_ISSUES_BLOCK_ATTR_HTML)
+).replace("__SUPPORT_GITHUB_ISSUES_BLOCK_ATTR__", SUPPORT_GITHUB_ISSUES_BLOCK_ATTR_HTML).replace(
+    "__SUPPORT_TICKET_FORM_BLOCK_ATTR__", SUPPORT_TICKET_FORM_BLOCK_ATTR_HTML
+)
 
 EMBEDDED_VNC_HTML = """
 <!DOCTYPE html>
@@ -4192,6 +4350,123 @@ def current_session_user(request: Request) -> Optional[dict]:
     return next((user for user in _load_users() if user.get("id") == user_id), None)
 
 
+SUPPORT_CATEGORY_LABELS = {
+    "hosted_account": "Hosted account or login",
+    "billing": "Billing or credits",
+    "ai_analysis": "AI analysis",
+    "browser_facebook": "Browser session or Facebook fill",
+    "self_host": "Self-host install",
+    "bug": "Bug or broken feature",
+    "other": "Other",
+}
+SUPPORT_RATE_LIMIT_WINDOW_SECONDS = 10 * 60
+SUPPORT_RATE_LIMIT_MAX = 3
+
+
+def clean_support_text(value, max_length: int) -> str:
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]+", " ", str(value or ""))
+    text = re.sub(r"[ \t]+", " ", text).strip()
+    return text[:max_length]
+
+
+def valid_support_email(value: str) -> bool:
+    return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value or ""))
+
+
+def support_client_key(request: Request, email: str) -> str:
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",", 1)[0].strip()
+    host = forwarded or (request.client.host if request.client else "") or "unknown"
+    digest = hashlib.sha1(f"{host.lower()}:{email.lower()}".encode("utf-8")).hexdigest()
+    return digest[:24]
+
+
+def support_rate_limited(key: str) -> bool:
+    now = time.time()
+    recent = [
+        timestamp
+        for timestamp in support_ticket_rate_log.get(key, [])
+        if now - timestamp < SUPPORT_RATE_LIMIT_WINDOW_SECONDS
+    ]
+    support_ticket_rate_log[key] = recent
+    if len(recent) >= SUPPORT_RATE_LIMIT_MAX:
+        return True
+    recent.append(now)
+    return False
+
+
+def build_support_ticket_submission(payload: dict, request: Request) -> dict:
+    category = clean_support_text(payload.get("category"), 80)
+    category_label = SUPPORT_CATEGORY_LABELS.get(category)
+    if not category_label:
+        raise ValueError("Choose a support category.")
+
+    email = clean_support_text(payload.get("email"), 180).lower()
+    if not valid_support_email(email):
+        raise ValueError("Enter a valid email address.")
+
+    message = clean_support_text(payload.get("message"), 4000)
+    if len(message) < 20:
+        raise ValueError("Include at least 20 characters of detail.")
+
+    subject = clean_support_text(payload.get("subject"), 160) or category_label
+    name = clean_support_text(payload.get("name"), 120) or "Not provided"
+    page = clean_support_text(payload.get("page"), 240) or "Not provided"
+    forwarded = clean_support_text(request.headers.get("x-forwarded-for", ""), 180) or "Not provided"
+    user_agent = clean_support_text(request.headers.get("user-agent", ""), 240) or "Not provided"
+
+    body = "\n".join([
+        "Auto-Lister guest helpdesk request",
+        "",
+        f"Category: {category_label}",
+        f"Requester: {name}",
+        f"Email: {email}",
+        f"Page or action: {page}",
+        f"Submitted at: {datetime.utcnow().isoformat()}Z",
+        f"Forwarded for: {forwarded}",
+        f"User agent: {user_agent}",
+        "",
+        "Message:",
+        message,
+    ])
+    return {
+        "email": email,
+        "title": f"Auto-Lister: {subject}",
+        "body": body,
+    }
+
+
+def create_zammad_support_ticket(submission: dict) -> dict:
+    response = requests.post(
+        f"{ZAMMAD_BASE_URL}/api/v1/tickets",
+        headers={
+            "Authorization": f"Token token={ZAMMAD_API_TOKEN}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        json={
+            "title": submission["title"],
+            "group": ZAMMAD_GROUP,
+            "customer_id": f"guess:{submission['email']}",
+            "article": {
+                "subject": submission["title"],
+                "body": submission["body"],
+                "type": "web",
+                "sender": "Customer",
+                "internal": False,
+                "content_type": "text/plain",
+            },
+        },
+        timeout=12,
+    )
+    if response.status_code >= 400:
+        try:
+            error_payload = response.json()
+        except ValueError:
+            error_payload = response.text[:300]
+        raise RuntimeError(f"Zammad ticket create failed ({response.status_code}): {error_payload}")
+    return response.json()
+
+
 def oidc_enabled() -> bool:
     return bool(OIDC_ISSUER and OIDC_CLIENT_ID and OIDC_REDIRECT_URI)
 
@@ -4657,6 +4932,46 @@ async def self_host_guide_page():
 @app.get("/support")
 async def support_page():
     return tracked_html_response(SUPPORT_HTML)
+
+
+@app.post("/api/support/ticket")
+async def support_ticket(request: Request):
+    if not SUPPORT_TICKET_FORM_ENABLED:
+        return {
+            "success": False,
+            "error": f"Guest helpdesk is not configured. Email {SUPPORT_EMAIL} instead.",
+        }
+    try:
+        payload = await request.json()
+    except Exception:
+        return {"success": False, "error": "Send the support request as JSON."}
+    if not isinstance(payload, dict):
+        return {"success": False, "error": "Invalid support request."}
+    if clean_support_text(payload.get("companyWebsite"), 200):
+        return {"success": True, "message": "Request submitted."}
+    try:
+        submission = build_support_ticket_submission(payload, request)
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+    key = support_client_key(request, submission["email"])
+    if support_rate_limited(key):
+        return {"success": False, "error": "Too many support requests. Try again in a few minutes."}
+    try:
+        ticket = await asyncio.to_thread(create_zammad_support_ticket, submission)
+    except Exception as e:
+        print(f"Support ticket create failed: {e}")
+        return {
+            "success": False,
+            "error": f"Helpdesk is temporarily unavailable. Email {SUPPORT_EMAIL} instead.",
+        }
+    ticket_number = ticket.get("number")
+    message = f"Request submitted as ticket #{ticket_number}." if ticket_number else "Request submitted."
+    return {
+        "success": True,
+        "message": message,
+        "ticket": {"id": ticket.get("id"), "number": ticket_number},
+    }
+
 
 @app.get("/downloads/{filename}")
 async def public_download(filename: str):
@@ -5161,7 +5476,85 @@ def parse_model_json(text: str, provider_name: str) -> dict:
         return json.loads(match.group(0))
 
 
+_vertex_credentials = None
+
+
+def vertex_endpoint(model: str) -> str:
+    if not VERTEX_AI_PROJECT:
+        raise RuntimeError("VERTEX_AI_PROJECT or GOOGLE_CLOUD_PROJECT is not configured.")
+    clean_model = model.replace("models/", "", 1)
+    host = "aiplatform.googleapis.com" if VERTEX_AI_LOCATION == "global" else f"{VERTEX_AI_LOCATION}-aiplatform.googleapis.com"
+    return (
+        f"https://{host}/v1/projects/{VERTEX_AI_PROJECT}/locations/{VERTEX_AI_LOCATION}"
+        f"/publishers/google/models/{clean_model}:generateContent"
+    )
+
+
+def vertex_access_token() -> str:
+    global _vertex_credentials
+    credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    if not credentials_path:
+        raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS is not configured.")
+    if _vertex_credentials is None:
+        _vertex_credentials = service_account.Credentials.from_service_account_file(
+            credentials_path,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+    if not _vertex_credentials.valid or _vertex_credentials.expired:
+        _vertex_credentials.refresh(GoogleAuthRequest())
+    return _vertex_credentials.token
+
+
+def extract_gemini_text(payload: dict, provider_name: str) -> str:
+    for candidate in payload.get("candidates") or []:
+        content = candidate.get("content") or {}
+        parts = content.get("parts") or []
+        text = "\n".join(str(part.get("text", "")).strip() for part in parts if part.get("text")).strip()
+        if text:
+            return text
+    raise ValueError(f"{provider_name} did not return text: {json.dumps(payload, ensure_ascii=True)[:500]}")
+
+
+def call_vertex_gemini(model: str, payload: dict) -> dict:
+    response = requests.post(
+        vertex_endpoint(model),
+        headers={
+            "Authorization": f"Bearer {vertex_access_token()}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=120,
+    )
+    if response.status_code >= 400:
+        try:
+            error_payload = response.json()
+        except ValueError:
+            error_payload = response.text
+        raise RuntimeError(f"Vertex Gemini failed ({response.status_code}): {error_payload}")
+    return response.json()
+
+
 async def analyze_images_with_gemini(paths: List[str], prompt: str) -> dict:
+    if GEMINI_USE_VERTEX:
+        parts = []
+        for path in paths:
+            mime_type = mimetypes.guess_type(path)[0] or "image/jpeg"
+            with open(path, "rb") as f:
+                parts.append({
+                    "inlineData": {
+                        "mimeType": mime_type,
+                        "data": base64.b64encode(f.read()).decode("ascii"),
+                    }
+                })
+        parts.append({"text": prompt})
+        response = call_vertex_gemini(GEMINI_MODEL, {
+            "contents": [{"role": "user", "parts": parts}],
+            "tools": [{"googleSearch": {}}],
+        })
+        details = parse_model_json(extract_gemini_text(response, "Vertex Gemini"), "Vertex Gemini")
+        details = await canonicalize_listing_links(details)
+        return filter_lowball_used_comps(details)
+
     if client is None:
         raise RuntimeError("GEMINI_API_KEY is not configured or the Gemini client failed to initialize.")
 
@@ -5335,12 +5728,19 @@ Return JSON with exactly these fields:
 - used_comparables: array of objects with source, title, price, url
 """
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearchRetrieval())])
-    )
-    text = (response.text or "").strip()
+    if GEMINI_USE_VERTEX:
+        response = call_vertex_gemini("gemini-2.5-flash", {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "tools": [{"googleSearch": {}}],
+        })
+        text = extract_gemini_text(response, "Vertex Gemini").strip()
+    else:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearchRetrieval())])
+        )
+        text = (response.text or "").strip()
     try:
         cleaned = json.loads(text)
     except json.JSONDecodeError:

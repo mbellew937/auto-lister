@@ -75,6 +75,9 @@ AUTO_MARKETPLACE_PUBLIC_REPO_URL=https://github.com/mbellew937/auto-lister.git
 AUTO_MARKETPLACE_SUPPORT_EMAIL=support@mrbtechnologies.com
 AUTO_MARKETPLACE_SUPPORT_HELPDESK_URL=https://helpdesk.mrbtechnologies.com
 AUTO_MARKETPLACE_SUPPORT_GITHUB_ISSUES_URL=https://github.com/mbellew937/auto-lister/issues
+AUTO_MARKETPLACE_ZAMMAD_URL=https://helpdesk.mrbtechnologies.com
+AUTO_MARKETPLACE_ZAMMAD_GROUP=MRB Technologies
+AUTO_MARKETPLACE_ZAMMAD_API_TOKEN=
 ```
 
 The login page shows a hosted option by default: "Run it on mine" with `$5` struck through, `$1` per post for a limited time, and the first 25 sign-ups receiving 3 free posts. New hosted users after that start with 0 free posts. Regenerations do not count; only clicking Publish should consume a paid post in a hosted billing flow.
@@ -89,6 +92,11 @@ AUTO_MARKETPLACE_SUPPORT_URL=mailto:support@example.com
 AUTO_MARKETPLACE_SUPPORT_HELPDESK_URL=https://helpdesk.example.com
 AUTO_MARKETPLACE_SUPPORT_GITHUB_ISSUES_URL=https://github.com/you/auto-lister/issues
 ```
+
+Set `AUTO_MARKETPLACE_ZAMMAD_API_TOKEN`, `AUTO_MARKETPLACE_ZAMMAD_URL`, and
+`AUTO_MARKETPLACE_ZAMMAD_GROUP` to enable the no-sign-in guest helpdesk form on
+`/support`. The token stays server-side and creates Zammad tickets with guest
+customer email addresses.
 
 ## Optional Matomo Analytics
 
