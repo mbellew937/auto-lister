@@ -92,8 +92,24 @@ CONDITION_ALIASES = {
 
 CATEGORY_ALIASES = {
     "misc": ["Miscellaneous", "General", "Other"],
-    "tools": ["Tools"],
+    "miscellaneous": ["Miscellaneous", "General", "Other"],
+    "other": ["Miscellaneous", "Other"],
+    "tools": ["Tools", "Home improvement supplies", "Home improvement", "Miscellaneous"],
+    "tool": ["Tools", "Home improvement supplies", "Home improvement", "Miscellaneous"],
+    "home improvement": ["Home improvement supplies", "Tools", "Home goods", "Miscellaneous"],
+    "electronics": ["Electronics", "Miscellaneous"],
+    "furniture": ["Furniture", "Home goods", "Miscellaneous"],
+    "home goods": ["Home goods", "Furniture", "Miscellaneous"],
+    "appliance": ["Appliances", "Home goods", "Miscellaneous"],
+    "appliances": ["Appliances", "Home goods", "Miscellaneous"],
+    "clothing": ["Clothing", "Miscellaneous"],
+    "apparel": ["Clothing", "Miscellaneous"],
+    "sporting": ["Sporting goods", "Sports & outdoors", "Miscellaneous"],
+    "sports": ["Sporting goods", "Sports & outdoors", "Miscellaneous"],
+    "outdoor": ["Garden & outdoor", "Patio & garden", "Miscellaneous"],
+    "garden": ["Garden & outdoor", "Patio & garden", "Miscellaneous"],
 }
+CATEGORY_FALLBACKS = ["Miscellaneous", "Other"]
 
 async def _report(callback: StatusCallback, step: str, progress: int, message: str):
     if not callback:
@@ -112,7 +128,11 @@ def _option_variants(label: str, value: str) -> List[str]:
     if label.lower() == "condition":
         variants = CONDITION_ALIASES.get(normalized, []) + variants
     elif label.lower() == "category":
-        variants = CATEGORY_ALIASES.get(normalized, []) + variants
+        aliases = []
+        for key, values in CATEGORY_ALIASES.items():
+            if key == normalized or key in normalized or normalized in key:
+                aliases.extend(values)
+        variants = aliases + variants + CATEGORY_FALLBACKS
 
     deduped = []
     seen = set()
@@ -209,15 +229,23 @@ async def _find_search_input(page):
         page.locator('[role="dialog"] [role="searchbox"]'),
         page.locator('[role="listbox"] [role="searchbox"]'),
         page.locator('[role="menu"] [role="searchbox"]'),
+        page.locator('[aria-modal="true"] [role="searchbox"]'),
+        page.locator('[role="dialog"] [role="textbox"]'),
+        page.locator('[role="listbox"] [role="textbox"]'),
+        page.locator('[role="menu"] [role="textbox"]'),
+        page.locator('[aria-modal="true"] [role="textbox"]'),
         page.locator('[role="dialog"] input[type="text"]'),
         page.locator('[role="listbox"] input[type="text"]'),
         page.locator('[role="menu"] input[type="text"]'),
+        page.locator('[aria-modal="true"] input[type="text"]'),
         page.locator('[role="dialog"] [aria-label*="Search" i]'),
         page.locator('[role="listbox"] [aria-label*="Search" i]'),
         page.locator('[role="menu"] [aria-label*="Search" i]'),
+        page.locator('[aria-modal="true"] [aria-label*="Search" i]'),
         page.locator('[role="dialog"] input[placeholder*="Search" i]'),
         page.locator('[role="listbox"] input[placeholder*="Search" i]'),
         page.locator('[role="menu"] input[placeholder*="Search" i]'),
+        page.locator('[aria-modal="true"] input[placeholder*="Search" i]'),
     ]
     for candidate in candidates:
         try:
@@ -232,10 +260,16 @@ async def _find_search_input(page):
 
 async def _click_option_text(page, text: str) -> bool:
     pattern = re.compile(rf"^{re.escape(text)}$", re.I)
+    roots = [
+        page.locator('[aria-modal="true"]').last,
+        page.locator('[role="dialog"]').last,
+        page.locator('[role="listbox"]').last,
+        page.locator('[role="menu"]').last,
+    ]
     locators = [
-        page.get_by_role("option", name=pattern),
-        page.get_by_role("button", name=pattern),
-        page.get_by_text(text, exact=True),
+        *(root.get_by_role("option", name=pattern) for root in roots),
+        *(root.get_by_role("button", name=pattern) for root in roots),
+        *(root.get_by_text(text, exact=True) for root in roots),
     ]
     if await _click_first_visible(locators):
         return True
@@ -243,9 +277,29 @@ async def _click_option_text(page, text: str) -> bool:
     try:
         handle = await page.evaluate_handle(
             """(text) => {
-                const wanted = (text || '').trim().toLowerCase();
-                const nodes = Array.from(document.querySelectorAll('[role="option"], [role="button"], div, span, li'));
-                return nodes.find((node) => (node.innerText || node.textContent || '').trim().toLowerCase() === wanted) || null;
+                const norm = (value) => (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+                const wanted = norm(text);
+                const isVisible = (node) => {
+                    const style = window.getComputedStyle(node);
+                    const rect = node.getBoundingClientRect();
+                    return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+                };
+                const rootCandidates = Array.from(document.querySelectorAll('[aria-modal="true"], [role="dialog"], [role="listbox"], [role="menu"]'))
+                    .filter(isVisible);
+                const roots = rootCandidates.length ? rootCandidates.reverse() : [document.body];
+                const selectors = '[role="option"], [role="button"], div[tabindex], li[tabindex], span[tabindex]';
+                const matches = (node) => {
+                    const label = norm(node.innerText || node.textContent || '');
+                    if (!label || !wanted) return false;
+                    return label === wanted || label.startsWith(wanted + ' ') || label.includes(' ' + wanted + ' ');
+                };
+                for (const root of roots) {
+                    const nodes = Array.from(root.querySelectorAll(selectors)).filter(isVisible);
+                    for (const node of nodes) {
+                        if (matches(node)) return node;
+                    }
+                }
+                return null;
             }""",
             text,
         )
@@ -261,7 +315,7 @@ async def _select_marketplace_option(page, label: str, value: str) -> bool:
     if not await _open_marketplace_picker(page, label):
         return False
 
-    await page.wait_for_timeout(250)
+    await page.wait_for_timeout(450)
 
     for option_text in _option_variants(label, value):
         search_input = await _find_search_input(page)
@@ -269,7 +323,7 @@ async def _select_marketplace_option(page, label: str, value: str) -> bool:
             try:
                 await search_input.fill("")
                 await search_input.fill(option_text)
-                await page.wait_for_timeout(250)
+                await page.wait_for_timeout(650)
             except Exception:
                 pass
 

@@ -27,6 +27,8 @@
 - Disabled the hosted `/self-host` guide by default for downloaded installs;
   hosted deployments must opt in with `AUTO_MARKETPLACE_ENABLE_SELF_HOST_PAGE`.
 - Fixed Facebook fill so selecting condition cannot overwrite the listing title.
+- Improved Facebook category selection with modal-scoped search, fuzzy option
+  matching, and fallback categories.
 
 ## 2026.05.16
 
