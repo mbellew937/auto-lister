@@ -2319,6 +2319,8 @@ DASHBOARD_HTML = """
             text-align: center;
             overflow-wrap: anywhere;
         }
+        a.storage-action { text-decoration: none; }
+        .storage-action.secondary { background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.28); color: #86efac; }
         .storage-action:active { border-color: var(--accent); }
         .storage-status { margin-top: 0.8rem; }
         .storage-stack { display: flex; flex-direction: column; gap: 0.7rem; width: 100%; min-width: 0; flex-shrink: 0; }
@@ -2328,6 +2330,12 @@ DASHBOARD_HTML = """
             letter-spacing: 0.08em;
             color: var(--muted);
             font-weight: 700;
+        }
+        .storage-count-link {
+            color: var(--muted);
+            font-size: 0.82rem;
+            font-weight: 700;
+            line-height: 1.35;
         }
         .storage-library-actions {
             display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
@@ -2589,6 +2597,8 @@ DASHBOARD_HTML = """
             cursor: pointer;
         }
         .d-storage-toolbar button:disabled { opacity: 0.45; cursor: default; }
+        .d-storage-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+        .d-storage-summary { color: var(--muted); font-size: 0.8rem; font-weight: 700; margin-top: 0.55rem; }
 
         .upload-zone-d {
             border: 2px dashed var(--border2); border-radius: var(--radius); padding: 2rem 1.5rem;
@@ -2934,19 +2944,6 @@ DASHBOARD_HTML = """
         </div>
     </div>
 
-    <div id=\"mStorageDrawer\" style=\"display:none; padding: 0.55rem max(0.5rem, var(--safe-right)) 0 max(0.5rem, var(--safe-left));\">
-        <div class=\"drafts-drawer\" style=\"background:linear-gradient(135deg, rgba(16,185,129,0.08), rgba(34,197,94,0.04)); border-color: rgba(16,185,129,0.2); box-shadow:none;\">
-            <div class=\"drafts-header\" onclick=\"toggleStorageDrawer()\">
-                <div class=\"drafts-header-left\" style=\"color:#86efac;\">
-                    <span>🖼️</span>
-                    <span id=\"mStorageCount\">Photo Storage</span>
-                </div>
-                <span class=\"drafts-chevron\" id=\"mStorageChevron\" style=\"color:#86efac;\">▼</span>
-            </div>
-            <div class=\"drafts-body\" id=\"mStorageBody\" style=\"display:none; border-top-color: rgba(16,185,129,0.15);\"></div>
-        </div>
-    </div>
-
     <!-- STEP 1: Take / choose photos -->
     <div class=\"m-step active\" id=\"mStep1\">
         <div class=\"m-step-head\">
@@ -2982,10 +2979,12 @@ DASHBOARD_HTML = """
             <div class=\"storage-subhead\">Photo Storage</div>
             <div class=\"storage-grid\">
                 <button class=\"storage-action\" onclick=\"document.getElementById('storagePhotoInput').click()\">📥 Store Photos</button>
+                <a class=\"storage-action secondary\" href=\"/photo-storage\">🖼️ Photo Library</a>
             </div>
+            <div id=\"mStorageSummary\" class=\"storage-count-link\" style=\"display:none;\"></div>
             <div class=\"storage-subhead\">Draft Upload</div>
             <div class=\"storage-grid\">
-                <button class=\"storage-action\" onclick=\"document.getElementById('draftPhotoInput').click()\">📝 Add to Draft</button>
+                <button class=\"storage-action\" onclick=\"document.getElementById('draftPhotoInput').click()\">📝 Save Draft Photos</button>
             </div>
         </div>
         <div id=\"mStorageStatus\" class=\"status-pill storage-status\" style=\"display:none;\"></div>
@@ -3081,18 +3080,28 @@ DASHBOARD_HTML = """
 
             <div>
                 <div class=\"d-section-title\" style=\"margin-bottom:0.75rem;\">Photo Storage</div>
+                <div class=\"d-storage-actions\">
+                    <label class=\"upload-zone-d\" style=\"display:block;\">
+                        <input type=\"file\" id=\"storageFileInput\" accept=\"image/*\" multiple onchange=\"handleStorageFiles(this.files, this)\">
+                        <div class=\"upload-zone-d-icon\">🗂️</div>
+                        <div class=\"upload-zone-d-label\">Upload to Storage</div>
+                    </label>
+                    <a class=\"upload-zone-d\" href=\"/photo-storage\" style=\"display:block;text-decoration:none;color:inherit;\">
+                        <div class=\"upload-zone-d-icon\">🖼️</div>
+                        <div class=\"upload-zone-d-label\">Photo Library</div>
+                    </a>
+                </div>
+                <div id=\"dStorageSummary\" class=\"d-storage-summary\" style=\"display:none;\"></div>
+                <div id=\"dStorageStatus\" class=\"d-status\" style=\"display:none;\"></div>
+            </div>
+
+            <div>
+                <div class=\"d-section-title\" style=\"margin-bottom:0.75rem;\">Draft Upload</div>
                 <label class=\"upload-zone-d\" style=\"display:block;\">
-                    <input type=\"file\" id=\"storageFileInput\" accept=\"image/*\" multiple onchange=\"handleStorageFiles(this.files, this)\">
-                    <div class=\"upload-zone-d-icon\">🗂️</div>
-                    <div class=\"upload-zone-d-label\">Upload to Storage</div>
-                </label>
-                <label class=\"upload-zone-d\" style=\"display:block; margin-top:0.75rem;\">
                     <input type=\"file\" id=\"draftFileInput\" accept=\"image/*\" multiple onchange=\"handleDraftUploadFiles(this.files, this)\">
                     <div class=\"upload-zone-d-icon\">📝</div>
-                    <div class=\"upload-zone-d-label\">Upload to Drafts</div>
+                    <div class=\"upload-zone-d-label\">Save Draft Photos</div>
                 </label>
-                <div id=\"dStorageStatus\" class=\"d-status\" style=\"display:none;\"></div>
-                <div id=\"dStorageList\" style=\"display:flex;flex-direction:column;gap:0.5rem;margin-top:0.75rem;\"></div>
             </div>
 
             <!-- Status -->
@@ -3262,6 +3271,11 @@ async function init() {
         }
         await loadDraftsList();
         await loadPhotoStorageList();
+        const resumeDraftId = new URLSearchParams(window.location.search).get('draftId');
+        if (resumeDraftId) {
+            window.history.replaceState({}, '', '/dashboard');
+            await resumeDraft(resumeDraftId);
+        }
         scheduleSharedStateRefresh();
         tutMaybeShow();
     } catch(e) { window.location.href = '/login'; }
@@ -3360,64 +3374,19 @@ function renderPhotoStorageList(photos) {
     for (const id of Array.from(selectedStoragePhotoIds)) {
         if (!storagePhotoMap[id]) selectedStoragePhotoIds.delete(id);
     }
-    const selectedCount = selectedStoragePhotoIds.size;
-
-    if (isMobile) {
-        const drawer = document.getElementById('mStorageDrawer');
-        const body = document.getElementById('mStorageBody');
-        const countEl = document.getElementById('mStorageCount');
-        if (!storagePhotoItems.length) {
-            drawer.style.display = 'none';
-            return;
-        }
-        drawer.style.display = 'block';
-        countEl.textContent = `${storagePhotoItems.length} Stored Photo${storagePhotoItems.length > 1 ? 's' : ''}`;
-        body.innerHTML = `
-            <div class="storage-library-actions">
-                <span class="storage-selected-count">${selectedCount} selected</span>
-                <button type="button" class="storage-analyze-btn" onclick="createListingFromStorage()" ${selectedCount ? '' : 'disabled'}>Analyze Selected</button>
-            </div>
-            ${storagePhotoItems.map(photo => {
-                const selected = selectedStoragePhotoIds.has(photo.id);
-                return `
-            <div class="draft-item ${selected ? 'storage-photo-selected' : ''}" onclick="toggleStoragePhoto('${photo.id}')">
-                <img class="storage-photo-thumb" src="${storagePhotoImageUrl(photo)}" alt="">
-                <div class="draft-info">
-                    <div class="draft-title">${escHtml(storagePhotoTitle(photo))}</div>
-                    <div class="draft-meta">${escHtml(storagePhotoMetaText(photo))}</div>
-                </div>
-                <div class="draft-actions">
-                    <span class="storage-photo-select">${selected ? '✓' : ''}</span>
-                </div>
-            </div>`;
-            }).join('')}
-        `;
-    } else {
-        const list = document.getElementById('dStorageList');
-        if (!storagePhotoItems.length) {
-            list.innerHTML = '';
-            return;
-        }
-        list.innerHTML = `
-            <div class="d-storage-toolbar">
-                <span>${selectedCount} selected</span>
-                <button type="button" onclick="createListingFromStorage()" ${selectedCount ? '' : 'disabled'}>Analyze Selected</button>
-            </div>
-            ${storagePhotoItems.map(photo => {
-                const selected = selectedStoragePhotoIds.has(photo.id);
-                return `
-            <div class="d-draft-item ${selected ? 'storage-photo-selected' : ''}" onclick="toggleStoragePhoto('${photo.id}')">
-                <img class="storage-photo-thumb" src="${storagePhotoImageUrl(photo)}" alt="">
-                <div style="flex:1;min-width:0;">
-                    <div class="d-draft-title">${escHtml(storagePhotoTitle(photo))}</div>
-                    <div class="d-draft-meta">${escHtml(storagePhotoMetaText(photo))}</div>
-                </div>
-                <div class="d-draft-actions">
-                    <span class="storage-photo-select">${selected ? '✓' : ''}</span>
-                </div>
-            </div>`;
-            }).join('')}
-        `;
+    const count = storagePhotoItems.length;
+    const summary = count
+        ? `${count} stored photo${count === 1 ? '' : 's'} in your library`
+        : 'No stored photos yet';
+    const mSummary = document.getElementById('mStorageSummary');
+    if (mSummary) {
+        mSummary.textContent = summary;
+        mSummary.style.display = 'block';
+    }
+    const dSummary = document.getElementById('dStorageSummary');
+    if (dSummary) {
+        dSummary.textContent = summary;
+        dSummary.style.display = 'block';
     }
 }
 
@@ -3427,14 +3396,6 @@ function toggleStoragePhoto(photoId) {
     else selectedStoragePhotoIds.add(photoId);
     trackAppAction(selectedStoragePhotoIds.has(photoId) ? 'storage-photo-selected' : 'storage-photo-deselected', device);
     renderPhotoStorageList(storagePhotoItems);
-}
-
-function toggleStorageDrawer() {
-    const body = document.getElementById('mStorageBody');
-    const chev = document.getElementById('mStorageChevron');
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : 'block';
-    chev.classList.toggle('open', !open);
 }
 
 async function resumeDraft(draftId) {
@@ -3756,7 +3717,7 @@ async function uploadPhotosToDrafts(files) {
             return;
         }
         trackAppAction('draft-upload-success', device, files.length);
-        setStorageStatus('Draft saved.', 'ok');
+        setStorageStatus('Draft saved. Open it from Saved Drafts when ready.', 'ok');
         await loadDraftsList();
     } catch(e) {
         trackAppAction('draft-upload-error');
@@ -4219,6 +4180,326 @@ function tutMaybeShow() {
 
 init();
 </script>
+</body>
+</html>
+"""
+
+PHOTO_STORAGE_HTML = """
+<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"UTF-8\">
+    <title>Photo Library - Auto-Lister</title>
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\">
+    <meta name=\"theme-color\" content=\"#080d14\">
+    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">
+    <link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap\" rel=\"stylesheet\">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #080d14;
+            --surface: #0f1923;
+            --surface2: #162032;
+            --border: rgba(255,255,255,0.1);
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --accent: #3b82f6;
+            --green: #10b981;
+            --safe-bottom: max(env(safe-area-inset-bottom), 0px);
+        }
+        body {
+            min-height: 100dvh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: inherit; text-decoration: none; }
+        input[type=\"file\"] { display: none; }
+        .hdr {
+            position: sticky; top: 0; z-index: 20;
+            height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+            padding: 0 clamp(1rem, 3vw, 1.5rem);
+            background: rgba(8,13,20,0.9); backdrop-filter: blur(14px);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .brand { display: flex; align-items: center; gap: 0.65rem; min-width: 0; font-weight: 900; }
+        .brand-mark {
+            width: 32px; height: 32px; border-radius: 9px;
+            display: grid; place-items: center;
+            background: linear-gradient(135deg,#3b82f6,#8b5cf6);
+        }
+        .brand span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .hdr-actions { display: flex; align-items: center; gap: 0.55rem; flex-shrink: 0; }
+        .btn {
+            min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+            padding: 0 14px; border-radius: 9px; border: 1px solid var(--border);
+            background: rgba(22,32,50,0.92); color: var(--text);
+            font: inherit; font-size: 0.88rem; font-weight: 800; cursor: pointer;
+        }
+        .btn.primary { background: #f8fafc; color: #0f172a; border-color: #f8fafc; }
+        .btn.green { background: rgba(16,185,129,0.16); color: #86efac; border-color: rgba(16,185,129,0.34); }
+        .btn:disabled { opacity: 0.48; cursor: default; }
+        main { width: min(1440px, calc(100% - 28px)); margin: 0 auto; padding: 26px 0 calc(96px + var(--safe-bottom)); }
+        .topline {
+            display: flex; align-items: end; justify-content: space-between; gap: 1rem;
+            margin-bottom: 18px;
+        }
+        h1 { font-size: clamp(1.9rem, 5vw, 3.2rem); line-height: 1.02; letter-spacing: -0.03em; }
+        .meta { color: var(--muted); margin-top: 8px; font-size: 0.95rem; font-weight: 650; }
+        .toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; justify-content: flex-end; }
+        .status {
+            min-height: 22px; color: var(--muted); font-size: 0.92rem; font-weight: 700;
+            margin: 8px 0 16px;
+        }
+        .status.ok { color: #86efac; }
+        .status.err { color: #fca5a5; }
+        .library-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+            gap: 16px;
+            align-items: start;
+        }
+        .photo-tile {
+            position: relative;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface);
+            overflow: hidden;
+            cursor: pointer;
+            transition: border-color 0.15s, transform 0.12s, background 0.15s;
+        }
+        .photo-tile:hover { border-color: rgba(96,165,250,0.45); background: #132032; }
+        .photo-tile.selected { border-color: rgba(16,185,129,0.7); box-shadow: 0 0 0 1px rgba(16,185,129,0.24); }
+        .photo-tile img {
+            display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
+            background: var(--surface2);
+        }
+        .photo-info { padding: 11px 12px 12px; display: grid; gap: 5px; }
+        .photo-name { color: #f8fafc; font-size: 0.9rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .photo-age { color: var(--muted); font-size: 0.78rem; font-weight: 700; }
+        .photo-check {
+            position: absolute; top: 10px; right: 10px;
+            width: 30px; height: 30px; border-radius: 9px;
+            display: grid; place-items: center;
+            border: 1px solid rgba(255,255,255,0.28);
+            background: rgba(8,13,20,0.7); color: transparent;
+            font-weight: 900;
+        }
+        .photo-tile.selected .photo-check { background: #86efac; border-color: #86efac; color: #052e16; }
+        .empty {
+            border: 1px dashed rgba(148,163,184,0.26);
+            border-radius: 12px;
+            background: rgba(15,25,35,0.55);
+            padding: 34px;
+            color: var(--muted);
+            font-weight: 700;
+        }
+        .action-bar {
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+            padding: 12px max(14px, env(safe-area-inset-right)) calc(12px + var(--safe-bottom)) max(14px, env(safe-area-inset-left));
+            background: rgba(8,13,20,0.92); backdrop-filter: blur(16px);
+            border-top: 1px solid rgba(255,255,255,0.08);
+        }
+        .action-inner {
+            width: min(1440px, 100%);
+            margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between; gap: 0.9rem;
+        }
+        .selected-count { color: var(--muted); font-weight: 800; }
+        @media (max-width: 720px) {
+            .hdr { height: 60px; }
+            .hdr-actions .btn:first-child { display: none; }
+            main { width: min(100% - 20px, 1440px); padding-top: 18px; }
+            .topline { align-items: stretch; flex-direction: column; }
+            .toolbar { justify-content: stretch; display: grid; grid-template-columns: 1fr 1fr; }
+            .toolbar .btn { width: 100%; }
+            .library-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+            .photo-info { padding: 9px; }
+            .action-inner { align-items: stretch; flex-direction: column; }
+            .action-inner .btn { width: 100%; min-height: 48px; }
+        }
+    </style>
+</head>
+<body>
+    <header class=\"hdr\">
+        <a class=\"brand\" href=\"/dashboard\"><span class=\"brand-mark\">⚡</span><span>Auto-Lister</span></a>
+        <div class=\"hdr-actions\">
+            <a class=\"btn\" href=\"/dashboard\">Dashboard</a>
+            <button class=\"btn\" onclick=\"signOut()\">Sign out</button>
+        </div>
+    </header>
+    <main>
+        <div class=\"topline\">
+            <div>
+                <h1>Photo Library</h1>
+                <div class=\"meta\" id=\"libraryMeta\">Loading photos...</div>
+            </div>
+            <div class=\"toolbar\">
+                <button class=\"btn green\" onclick=\"document.getElementById('libraryUploadInput').click()\">Store Photos</button>
+                <button class=\"btn\" onclick=\"clearSelection()\">Clear</button>
+            </div>
+        </div>
+        <input type=\"file\" id=\"libraryUploadInput\" accept=\"image/*\" multiple onchange=\"handleLibraryUpload(this.files, this)\">
+        <div class=\"status\" id=\"libraryStatus\"></div>
+        <div class=\"library-grid\" id=\"libraryGrid\"></div>
+    </main>
+    <div class=\"action-bar\">
+        <div class=\"action-inner\">
+            <div class=\"selected-count\" id=\"selectedCount\">0 selected</div>
+            <button class=\"btn primary\" id=\"createPostBtn\" onclick=\"createPostFromSelection()\" disabled>Create Post</button>
+        </div>
+    </div>
+    <script>
+        let userId = null;
+        let photos = [];
+        const selected = new Set();
+        let createInFlight = false;
+
+        function trackLibraryAction(action, name='', value) {
+            if (window.trackAutoListerEvent) window.trackAutoListerEvent('photo-library', action, name, value);
+        }
+        function escHtml(v) {
+            return String(v??'').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]));
+        }
+        function fmtAge(iso) {
+            if (!iso) return '';
+            const s = (Date.now() - new Date(iso + 'Z').getTime()) / 1000;
+            if (s < 60) return 'just now';
+            if (s < 3600) return Math.floor(s/60) + 'm ago';
+            if (s < 86400) return Math.floor(s/3600) + 'h ago';
+            return Math.floor(s/86400) + 'd ago';
+        }
+        function imageUrl(photo) {
+            return `/api/photo-storage/photo/${encodeURIComponent(photo.id)}?userId=${encodeURIComponent(userId)}`;
+        }
+        function setStatus(message, type='') {
+            const el = document.getElementById('libraryStatus');
+            el.className = 'status' + (type ? ' ' + type : '');
+            el.textContent = message || '';
+        }
+        async function init() {
+            try {
+                const auth = await fetch('/api/auth/me').then(r => r.json());
+                if (!auth.success) {
+                    window.location.href = auth.setup_required ? '/setup' : '/login';
+                    return;
+                }
+                userId = auth.user.$id;
+                await loadPhotos();
+            } catch (e) {
+                window.location.href = '/login';
+            }
+        }
+        async function signOut() {
+            trackLibraryAction('logout');
+            window.location.href = '/api/auth/logout';
+        }
+        async function loadPhotos() {
+            try {
+                const data = await fetch(`/api/photo-storage?userId=${encodeURIComponent(userId)}`).then(r => r.json());
+                photos = data.success ? (data.photos || []) : [];
+                for (const id of Array.from(selected)) {
+                    if (!photos.some(photo => photo.id === id)) selected.delete(id);
+                }
+                renderPhotos();
+            } catch (e) {
+                photos = [];
+                renderPhotos();
+                setStatus('Could not load stored photos.', 'err');
+            }
+        }
+        function renderPhotos() {
+            const grid = document.getElementById('libraryGrid');
+            const meta = document.getElementById('libraryMeta');
+            meta.textContent = `${photos.length} stored photo${photos.length === 1 ? '' : 's'}`;
+            updateSelectedCount();
+            if (!photos.length) {
+                grid.innerHTML = '<div class=\"empty\">No stored photos yet.</div>';
+                return;
+            }
+            grid.innerHTML = photos.map(photo => {
+                const isSelected = selected.has(photo.id);
+                return `
+                    <div class=\"photo-tile ${isSelected ? 'selected' : ''}\" onclick=\"togglePhoto('${photo.id}')\">
+                        <img src=\"${imageUrl(photo)}\" alt=\"\">
+                        <span class=\"photo-check\">${isSelected ? '✓' : ''}</span>
+                        <div class=\"photo-info\">
+                            <div class=\"photo-name\">${escHtml(photo.filename || 'Stored photo')}</div>
+                            <div class=\"photo-age\">${escHtml(fmtAge(photo.saved_at))}</div>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+        function updateSelectedCount() {
+            const count = selected.size;
+            document.getElementById('selectedCount').textContent = `${count} selected`;
+            document.getElementById('createPostBtn').disabled = !count || createInFlight;
+        }
+        function togglePhoto(photoId) {
+            if (selected.has(photoId)) selected.delete(photoId);
+            else selected.add(photoId);
+            trackLibraryAction(selected.has(photoId) ? 'select' : 'deselect', '', selected.size);
+            renderPhotos();
+        }
+        function clearSelection() {
+            selected.clear();
+            trackLibraryAction('clear-selection');
+            renderPhotos();
+        }
+        async function handleLibraryUpload(files, input) {
+            if (!files?.length) return;
+            setStatus('Storing photos...');
+            trackLibraryAction('upload-start', '', files.length);
+            const fd = new FormData();
+            for (const file of files) fd.append('files', file);
+            try {
+                const result = await fetch(`/api/photo-storage/upload?userId=${encodeURIComponent(userId)}&device=library`, {method:'POST', body: fd}).then(r => r.json());
+                if (!result.success) {
+                    setStatus(result.error || 'Upload failed.', 'err');
+                    trackLibraryAction('upload-error');
+                    return;
+                }
+                setStatus('Stored.', 'ok');
+                trackLibraryAction('upload-success', '', files.length);
+                await loadPhotos();
+            } catch (e) {
+                setStatus('Network error. Try again.', 'err');
+                trackLibraryAction('upload-error');
+            } finally {
+                if (input) input.value = '';
+            }
+        }
+        async function createPostFromSelection() {
+            const photoIds = Array.from(selected);
+            if (!photoIds.length || createInFlight) return;
+            createInFlight = true;
+            updateSelectedCount();
+            setStatus('Analyzing selected photos...');
+            trackLibraryAction('create-start', '', photoIds.length);
+            try {
+                const result = await fetch('/api/photo-storage/create-listing', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({userId, photoIds}),
+                }).then(r => r.json());
+                if (!result.success) {
+                    setStatus(result.error || 'Could not create post.', 'err');
+                    trackLibraryAction('create-error');
+                    return;
+                }
+                trackLibraryAction('create-success', '', photoIds.length);
+                window.location.href = `/dashboard?draftId=${encodeURIComponent(result.draft_id)}`;
+            } catch (e) {
+                setStatus('Network error. Try again.', 'err');
+                trackLibraryAction('create-error');
+            } finally {
+                createInFlight = false;
+                updateSelectedCount();
+            }
+        }
+        init();
+    </script>
 </body>
 </html>
 """
@@ -5206,6 +5487,9 @@ async def stripe_webhook(request: Request):
 @app.get("/dashboard")
 async def dashboard_page(): return tracked_html_response(DASHBOARD_HTML)
 
+@app.get("/photo-storage")
+async def photo_storage_page(): return tracked_html_response(PHOTO_STORAGE_HTML)
+
 @app.get("/embedded-vnc")
 async def embedded_vnc_page(): return tracked_html_response(EMBEDDED_VNC_HTML)
 
@@ -5274,7 +5558,6 @@ async def handle_upload(userId: str, files: List[UploadFile] = File(...), device
 
 @app.post("/api/drafts/upload")
 async def upload_draft_photos(userId: str, files: List[UploadFile] = File(...), device: str = "desktop"):
-    session_manager.get_or_create_session(userId, device)
     tmp_paths = []
     for f in files:
         path = os.path.join(tempfile.gettempdir(), f"draft_{userId}_{uuid.uuid4().hex}_{f.filename}")

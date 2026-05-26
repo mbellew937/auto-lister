@@ -169,8 +169,10 @@ Back up the `/data` volume if users rely on saved drafts or browser sessions.
 
 ## Demo Photos
 
-Photo Storage saves photos without creating or analyzing a listing. Pick one or
-more stored photos later and choose Analyze Selected to create a listing draft.
+Photo Storage saves photos without creating or analyzing a listing. Open
+`/photo-storage`, pick one or more stored photos from the larger library view,
+and choose Create Post to create a listing draft. Upload to Drafts only saves a
+photos-only draft; it does not open, analyze, or replace the current post.
 
 The release includes metadata-stripped demo photos in `examples/demo-photos/`.
 They are safe to use for checking the photo upload and analysis flow, but users

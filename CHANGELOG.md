@@ -17,6 +17,9 @@
 - Changed Photo Storage from click-to-analyze photo sets into a selectable photo
   library. Stored photos now stay saved until the user explicitly picks photos
   and runs Analyze Selected.
+- Moved stored photos out of the dashboard panel into a larger `/photo-storage`
+  library page with multi-select Create Post, and kept Upload to Drafts
+  save-only.
 
 ## 2026.05.16
 
